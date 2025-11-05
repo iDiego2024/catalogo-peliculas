@@ -848,32 +848,93 @@ else:
 st.markdown("---")
 st.markdown("## 🎬 AFI's 100 Years...100 Movies — 10th Anniversary Edition")
 
-# Usamos TODO tu catálogo (df), no solo el filtrado, para medir progreso global en el listado AFI
+# DataFrame base con la lista AFI
 afi_df = pd.DataFrame(AFI_LIST)
 afi_df["NormTitle"] = afi_df["Title"].apply(normalize_title)
 afi_df["YearInt"] = afi_df["Year"]
 
-# Aseguramos YearInt en df (ya creado arriba, pero por si acaso)
+# Aseguramos columnas de normalización en tu df (por si acaso)
+if "NormTitle" not in df.columns:
+    if "Title" in df.columns:
+        df["NormTitle"] = df["Title"].apply(normalize_title)
+    else:
+        df["NormTitle"] = ""
 if "YearInt" not in df.columns:
-    df["YearInt"] = df["Year"].fillna(-1).astype(int)
+    if "Year" in df.columns:
+        df["YearInt"] = df["Year"].fillna(-1).astype(int)
+    else:
+        df["YearInt"] = -1
 
-merge_cols = ["NormTitle", "YearInt"]
+def find_match(afi_norm, year, df_full):
+    """Intenta encontrar una película de tu catálogo que corresponda a la entrada AFI."""
+    # 1) Intento con mismo año
+    candidates = df_full[df_full["YearInt"] == year]
 
-afi_merged = afi_df.merge(
-    df[["NormTitle", "YearInt", "Title", "Your Rating", "IMDb Rating", "URL"]],
-    how="left",
-    on=merge_cols,
-    suffixes=("", "_df")
-)
+    # helpers de intento
+    def _try(cands):
+        if cands.empty:
+            return None
+        return cands.iloc[0]
 
-afi_merged["Seen"] = afi_merged["Your Rating"].notna()
+    # exacto por título normalizado
+    m = _try(candidates[candidates["NormTitle"] == afi_norm])
+    if m is not None:
+        return m
 
-total_afi = len(afi_merged)
-seen_afi = int(afi_merged["Seen"].sum())
+    # AFI dentro del título de tu CSV
+    m = _try(candidates[candidates["NormTitle"].str.contains(afi_norm, regex=False, na=False)])
+    if m is not None:
+        return m
+
+    # Uno es substring del otro (por si tu título es más corto que el de AFI)
+    m = _try(
+        candidates[candidates["NormTitle"].apply(
+            lambda t: afi_norm in t or t in afi_norm
+        )]
+    )
+    if m is not None:
+        return m
+
+    # 2) Fallback: ignorar el año y buscar en todo tu catálogo
+    candidates = df_full
+
+    m = _try(candidates[candidates["NormTitle"] == afi_norm])
+    if m is not None:
+        return m
+
+    m = _try(candidates[candidates["NormTitle"].str.contains(afi_norm, regex=False, na=False)])
+    if m is not None:
+        return m
+
+    m = _try(
+        candidates[candidates["NormTitle"].apply(
+            lambda t: afi_norm in t or t in afi_norm
+        )]
+    )
+    if m is not None:
+        return m
+
+    return None
+
+# Rellenamos columnas con tus datos
+afi_df["Your Rating"] = None
+afi_df["IMDb Rating"] = None
+afi_df["URL"] = None
+afi_df["Seen"] = False
+
+for idx, row in afi_df.iterrows():
+    match = find_match(row["NormTitle"], row["YearInt"], df)
+    if match is not None:
+        afi_df.at[idx, "Your Rating"] = match.get("Your Rating")
+        afi_df.at[idx, "IMDb Rating"] = match.get("IMDb Rating")
+        afi_df.at[idx, "URL"] = match.get("URL")
+        afi_df.at[idx, "Seen"] = True
+
+total_afi = len(afi_df)
+seen_afi = int(afi_df["Seen"].sum())
 pct_afi = (seen_afi / total_afi) if total_afi > 0 else 0.0
 
 col_afi1, col_afi2 = st.columns(2)
-
 with col_afi1:
     st.metric("Películas vistas del listado AFI", f"{seen_afi}/{total_afi}")
 with col_afi2:
@@ -882,7 +943,7 @@ st.progress(pct_afi)
 
 st.write("Este progreso se calcula sobre tu catálogo completo de IMDb, no solo sobre los filtros actuales.")
 
-afi_table = afi_merged.copy()
+afi_table = afi_df.copy()
 afi_table["Vista"] = afi_table["Seen"].map({True: "✅", False: "—"})
 
 afi_table_display = afi_table[[
@@ -900,6 +961,7 @@ st.dataframe(
     hide_index=True,
     use_container_width=True
 )
+
 
 # ============================================================
 #                        FAVORITAS

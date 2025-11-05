@@ -164,6 +164,12 @@ def load_data(file_path_or_buffer):
     else:
         df["Year"] = None
 
+    # Duración (minutos), si existe
+    if "Runtime (mins)" in df.columns:
+        df["Runtime (mins)"] = pd.to_numeric(df["Runtime (mins)"], errors="coerce")
+    else:
+        df["Runtime (mins)"] = None
+
     # Genres
     if "Genres" not in df.columns:
         df["Genres"] = ""
@@ -171,6 +177,10 @@ def load_data(file_path_or_buffer):
     # Directors
     if "Directors" not in df.columns:
         df["Directors"] = ""
+
+    # Actors (si viene en el CSV)
+    if "Actors" not in df.columns:
+        df["Actors"] = ""
 
     # Lista de géneros para filtros
     df["Genres"] = df["Genres"].fillna("")
@@ -291,7 +301,6 @@ else:
 
 # ----------------- Tema (siempre oscuro) + CSS -----------------
 
-# Valores fijos de modo oscuro
 primary_bg = "#0e1117"
 secondary_bg = "#161b22"
 text_color = "#f9fafb"
@@ -336,8 +345,6 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
-
-
 
 # ----------------- Opciones de visualización -----------------
 
@@ -483,7 +490,7 @@ with col2:
         st.metric("Promedio de tu nota", "N/A")
 with col3:
     if "IMDb Rating" in filtered.columns and filtered["IMDb Rating"].notna().any():
-        st.metric("Promedio IMDb", f"{filtered['IMDb Rating'].mean():.2f}")
+        st.metric("Promedio IMDb", f"{filtered['IMDb Rating"].mean():.2f}")
     else:
         st.metric("Promedio IMDb", "N/A")
 
@@ -600,6 +607,7 @@ with st.expander("Ver análisis y tendencias", expanded=False):
     if filtered.empty:
         st.info("No hay datos bajo los filtros actuales para mostrar gráficos.")
     else:
+        # 1) Películas por año
         col_a, col_b = st.columns(2)
         with col_a:
             st.markdown("**Películas por año**")
@@ -618,6 +626,7 @@ with st.expander("Ver análisis y tendencias", expanded=False):
             else:
                 st.write("Sin datos de año.")
 
+        # 2) Distribución de tu nota
         with col_b:
             st.markdown("**Distribución de tu nota (Your Rating)**")
             if "Your Rating" in filtered.columns and filtered["Your Rating"].notna().any():
@@ -635,38 +644,66 @@ with st.expander("Ver análisis y tendencias", expanded=False):
             else:
                 st.write("No hay notas tuyas disponibles.")
 
+        # 3) Tendencia de tus calificaciones por año (promedio + móvil)
+        st.markdown("### 📈 Tendencia de tus calificaciones por año")
+
+        if "Year" in filtered.columns and "Your Rating" in filtered.columns:
+            tmp = filtered[
+                filtered["Year"].notna() &
+                filtered["Your Rating"].notna()
+            ].copy()
+            if not tmp.empty:
+                by_year_rating = (
+                    tmp.groupby("Year")["Your Rating"]
+                    .mean()
+                    .reset_index()
+                    .sort_values("Year")
+                )
+                by_year_rating["YearInt"] = by_year_rating["Year"].astype(int)
+                by_year_rating["MA_3"] = (
+                    by_year_rating["Your Rating"]
+                    .rolling(window=3, min_periods=1)
+                    .mean()
+                )
+
+                long_trend = by_year_rating.melt(
+                    id_vars="YearInt",
+                    value_vars=["Your Rating", "MA_3"],
+                    var_name="Serie",
+                    value_name="Rating"
+                )
+
+                trend_chart = (
+                    alt.Chart(long_trend)
+                    .mark_line(point=True)
+                    .encode(
+                        x=alt.X("YearInt:O", title="Año"),
+                        y=alt.Y("Rating:Q", title="Nota media"),
+                        color=alt.Color("Serie:N", title="Serie", scale=alt.Scale(
+                            domain=["Your Rating", "MA_3"],
+                            range=["#60a5fa", "#f97316"]
+                        )),
+                        tooltip=["YearInt", "Serie", "Rating"]
+                    )
+                    .properties(height=350)
+                )
+                st.altair_chart(trend_chart, use_container_width=True)
+                st.caption("Línea azul: promedio anual. Naranja: promedio móvil de 3 años (suaviza la tendencia).")
+            else:
+                st.write("No hay suficientes datos (año + tu nota) para calcular la tendencia.")
+        else:
+            st.write("Faltan columnas 'Year' o 'Your Rating' para la tendencia.")
+
+        # 4) IMDb promedio por década
         col_c, col_d = st.columns(2)
         with col_c:
-            st.markdown("**Top géneros (por número de películas)**")
-            if "GenreList" in filtered.columns:
-                genres_exploded = filtered.explode("GenreList")
-                genres_exploded = genres_exploded[
-                    genres_exploded["GenreList"].notna() &
-                    (genres_exploded["GenreList"] != "")
-                ]
-                if not genres_exploded.empty:
-                    top_genres = (
-                        genres_exploded["GenreList"]
-                        .value_counts()
-                        .head(15)
-                        .reset_index()
-                    )
-                    top_genres.columns = ["Genre", "Count"]
-                    top_genres = top_genres.set_index("Genre")
-                    st.bar_chart(top_genres)
-                else:
-                    st.write("No hay géneros disponibles.")
-            else:
-                st.write("No se encontró información de géneros.")
-
-        with col_d:
             st.markdown("**IMDb promedio por década**")
             if "IMDb Rating" in filtered.columns and filtered["IMDb Rating"].notna().any():
-                tmp = filtered[filtered["Year"].notna()].copy()
-                if not tmp.empty:
-                    tmp["Decade"] = (tmp["Year"] // 10 * 10).astype(int)
+                tmp_dec = filtered[filtered["Year"].notna()].copy()
+                if not tmp_dec.empty:
+                    tmp_dec["Decade"] = (tmp_dec["Year"] // 10 * 10).astype(int)
                     decade_imdb = (
-                        tmp.groupby("Decade")["IMDb Rating"]
+                        tmp_dec.groupby("Decade")["IMDb Rating"]
                         .mean()
                         .reset_index()
                         .sort_values("Decade")
@@ -679,47 +716,51 @@ with st.expander("Ver análisis y tendencias", expanded=False):
             else:
                 st.write("No hay IMDb Rating disponible.")
 
-        st.markdown("### 🔬 Análisis avanzado (tu nota vs IMDb)")
-
-        if (
-            "Your Rating" in filtered.columns
-            and "IMDb Rating" in filtered.columns
-        ):
-            corr_df = filtered[["Your Rating", "IMDb Rating"]].dropna()
-        else:
-            corr_df = pd.DataFrame()
-
-        col_adv1, col_adv2 = st.columns(2)
-
-        with col_adv1:
-            if not corr_df.empty and len(corr_df) > 1:
-                corr = corr_df["Your Rating"].corr(corr_df["IMDb Rating"])
-                st.metric("Correlación Pearson (tu nota vs IMDb)", f"{corr:.2f}")
-            else:
-                st.metric("Correlación Pearson (tu nota vs IMDb)", "N/A")
-            st.write(
-                "Valores cercanos a 1 indican que sueles coincidir con IMDb; "
-                "cercanos a 0 indican independencia; negativos, que tiendes a ir en contra."
-            )
-
-        with col_adv2:
-            st.markdown("**Dispersión: IMDb vs tu nota**")
-            if not corr_df.empty:
-                scatter_chart = (
-                    alt.Chart(corr_df.reset_index())
-                    .mark_circle(size=60, opacity=0.6)
-                    .encode(
-                        x=alt.X("IMDb Rating:Q", scale=alt.Scale(domain=[0, 10])),
-                        y=alt.Y("Your Rating:Q", scale=alt.Scale(domain=[0, 10])),
-                        tooltip=["IMDb Rating", "Your Rating"],
+        # 5) Desviación tu nota vs IMDb por año
+        with col_d:
+            st.markdown("**¿Más generoso o más crítico? (Tu nota - IMDb por año)**")
+            if (
+                "Your Rating" in filtered.columns
+                and "IMDb Rating" in filtered.columns
+            ):
+                tmp_diff = filtered[
+                    filtered["Year"].notna() &
+                    filtered["Your Rating"].notna() &
+                    filtered["IMDb Rating"].notna()
+                ].copy()
+                if not tmp_diff.empty:
+                    tmp_diff["Diff"] = tmp_diff["Your Rating"] - tmp_diff["IMDb Rating"]
+                    diff_by_year = (
+                        tmp_diff.groupby("Year")["Diff"]
+                        .mean()
+                        .reset_index()
+                        .sort_values("Year")
                     )
-                    .properties(height=300)
-                )
-                st.altair_chart(scatter_chart, use_container_width=True)
-            else:
-                st.write("No hay datos suficientes para el gráfico de dispersión.")
+                    diff_by_year["YearInt"] = diff_by_year["Year"].astype(int)
 
-        st.markdown("**Mapa de calor: tu nota media por género y década**")
+                    diff_chart = (
+                        alt.Chart(diff_by_year)
+                        .mark_line(point=True)
+                        .encode(
+                            x=alt.X("YearInt:O", title="Año"),
+                            y=alt.Y("Diff:Q", title="Tu nota - IMDb"),
+                            tooltip=["YearInt", "Diff"]
+                        )
+                        .properties(height=300)
+                    )
+                    st.altair_chart(diff_chart, use_container_width=True)
+                    st.caption(
+                        "Valores por encima de 0 ⇒ sueles puntuar por encima de IMDb ese año. "
+                        "Por debajo de 0 ⇒ más duro que IMDb."
+                    )
+                else:
+                    st.write("No hay suficientes películas con tu nota e IMDb para este análisis.")
+            else:
+                st.write("Faltan columnas 'Your Rating' o 'IMDb Rating'.")
+
+        # 6) Mapa de calor: tu nota media por género y década
+        st.markdown("### 🎭 Mapa de calor: tu nota media por género y década")
+
         if "GenreList" in filtered.columns and "Your Rating" in filtered.columns:
             tmp = filtered.copy()
             tmp = tmp[tmp["Year"].notna() & tmp["Your Rating"].notna()]
@@ -760,6 +801,128 @@ with st.expander("Ver análisis y tendencias", expanded=False):
         else:
             st.write("Faltan columnas necesarias para el mapa de calor.")
 
+        # 7) Qué géneros te gustan últimamente (género vs año reciente)
+        st.markdown("### 🕒 Qué tipo de cine te gusta más últimamente")
+
+        if "GenreList" in filtered.columns and "Your Rating" in filtered.columns:
+            tmp = filtered.copy()
+            tmp = tmp[tmp["Year"].notna() & tmp["Your Rating"].notna()]
+            if not tmp.empty:
+                current_year = int(pd.Timestamp.now().year)
+                recent_limit = current_year - 10  # últimos 10 años
+                tmp_recent = tmp[tmp["Year"] >= recent_limit]
+
+                if not tmp_recent.empty:
+                    g_exp = tmp_recent.explode("GenreList")
+                    g_exp = g_exp[
+                        g_exp["GenreList"].notna() &
+                        (g_exp["GenreList"] != "")
+                    ]
+
+                    if not g_exp.empty:
+                        top_gen_counts = (
+                            g_exp["GenreList"]
+                            .value_counts()
+                            .head(5)
+                            .index.tolist()
+                        )
+                        g_top = g_exp[g_exp["GenreList"].isin(top_gen_counts)]
+
+                        genre_year = (
+                            g_top
+                            .groupby(["Year", "GenreList"])["Your Rating"]
+                            .mean()
+                            .reset_index()
+                        )
+                        genre_year["YearInt"] = genre_year["Year"].astype(int)
+
+                        gy_chart = (
+                            alt.Chart(genre_year)
+                            .mark_line(point=True)
+                            .encode(
+                                x=alt.X("YearInt:O", title="Año"),
+                                y=alt.Y("Your Rating:Q", title="Tu nota media"),
+                                color=alt.Color("GenreList:N", title="Género"),
+                                tooltip=["YearInt", "GenreList", "Your Rating"]
+                            )
+                            .properties(height=350)
+                        )
+                        st.altair_chart(gy_chart, use_container_width=True)
+                        st.caption(
+                            "Mostrados los 5 géneros más frecuentes en los últimos ~10 años y cómo los puntúas."
+                        )
+                    else:
+                        st.write("No hay géneros suficientes en los últimos años para este análisis.")
+                else:
+                    st.write("No tienes películas recientes (últimos ~10 años) con año y nota.")
+            else:
+                st.write("No hay datos suficientes (año + tu nota) para este análisis.")
+        else:
+            st.write("Faltan columnas 'GenreList' o 'Your Rating' para este análisis.")
+
+        # 8) Duración media por año y por género (si existe Runtime)
+        st.markdown("### ⏱️ Duración media de las películas")
+
+        if "Runtime (mins)" in filtered.columns and filtered["Runtime (mins)"].notna().any():
+            col_dur1, col_dur2 = st.columns(2)
+
+            with col_dur1:
+                st.markdown("**Duración media por año**")
+                tmp = filtered[
+                    filtered["Year"].notna() &
+                    filtered["Runtime (mins)"].notna()
+                ].copy()
+                if not tmp.empty:
+                    dur_year = (
+                        tmp.groupby("Year")["Runtime (mins)"]
+                        .mean()
+                        .reset_index()
+                        .sort_values("Year")
+                    )
+                    dur_year["YearInt"] = dur_year["Year"].astype(int)
+
+                    dur_chart = (
+                        alt.Chart(dur_year)
+                        .mark_line(point=True)
+                        .encode(
+                            x=alt.X("YearInt:O", title="Año"),
+                            y=alt.Y("Runtime (mins):Q", title="Minutos de duración"),
+                            tooltip=["YearInt", "Runtime (mins)"]
+                        )
+                        .properties(height=300)
+                    )
+                    st.altair_chart(dur_chart, use_container_width=True)
+                else:
+                    st.write("No hay datos suficientes de duración por año.")
+
+            with col_dur2:
+                st.markdown("**Duración media por género (top 10)**")
+                tmp = filtered[
+                    filtered["Runtime (mins)"].notna()
+                ].copy()
+                if "GenreList" in tmp.columns:
+                    g_exp = tmp.explode("GenreList")
+                    g_exp = g_exp[
+                        g_exp["GenreList"].notna() &
+                        (g_exp["GenreList"] != "")
+                    ]
+                    if not g_exp.empty:
+                        dur_genre = (
+                            g_exp
+                            .groupby("GenreList")["Runtime (mins)"]
+                            .mean()
+                            .reset_index()
+                        )
+                        dur_genre = dur_genre.sort_values("Runtime (mins)", ascending=False).head(10)
+                        dur_genre = dur_genre.set_index("GenreList")
+                        st.bar_chart(dur_genre)
+                    else:
+                        st.write("No hay géneros suficientes con duración.")
+                else:
+                    st.write("No se encontró información de géneros para este análisis.")
+        else:
+            st.write("El CSV no tiene 'Runtime (mins)' o no hay datos suficientes de duración.")
+
 # ============================================================
 #             ANÁLISIS DE GUSTOS PERSONALES
 # ============================================================
@@ -773,6 +936,7 @@ with st.expander("Ver análisis de gustos personales", expanded=False):
     else:
         col_g1, col_g2 = st.columns(2)
 
+        # 1) Media y dispersión por género
         with col_g1:
             st.markdown("### 🎭 Géneros según tu gusto")
 
@@ -820,8 +984,9 @@ with st.expander("Ver análisis de gustos personales", expanded=False):
             else:
                 st.write("Faltan columnas 'GenreList' o 'Your Rating' para este análisis.")
 
+        # 2) Diferencia entre tu nota e IMDb (global)
         with col_g2:
-            st.markdown("### ⚖️ ¿Eres más exigente que IMDb?")
+            st.markdown("### ⚖️ ¿Eres más exigente que IMDb? (global)")
 
             if "Your Rating" in filtered.columns and "IMDb Rating" in filtered.columns:
                 diff_df = filtered[
@@ -858,6 +1023,7 @@ with st.expander("Ver análisis de gustos personales", expanded=False):
             else:
                 st.write("Faltan columnas 'Your Rating' o 'IMDb Rating' para comparar con IMDb.")
 
+        # 3) Evolución de tu exigencia en el tiempo
         st.markdown("### ⏳ Evolución de tu exigencia con los años")
 
         if (
@@ -926,6 +1092,100 @@ with st.expander("Ver análisis de gustos personales", expanded=False):
         else:
             st.write("Faltan columnas 'Year', 'Your Rating' o 'IMDb Rating' para analizar tu evolución en el tiempo.")
 
+        # 4) Ranking de directores más vistos
+        st.markdown("### 🎬 Directores que más ves")
+
+        if "Directors" in filtered.columns:
+            tmp_dir = filtered.copy()
+            tmp_dir = tmp_dir[tmp_dir["Directors"].notna() & (tmp_dir["Directors"].astype(str).str.strip() != "")]
+            if not tmp_dir.empty:
+                dir_exp = tmp_dir.copy()
+                dir_exp["Directors"] = dir_exp["Directors"].astype(str)
+                dir_exp = dir_exp.assign(
+                    DirectorList=dir_exp["Directors"].apply(lambda x: [d.strip() for d in x.split(",")])
+                )
+                dir_exp = dir_exp.explode("DirectorList")
+                dir_exp = dir_exp[dir_exp["DirectorList"] != ""]
+
+                if not dir_exp.empty:
+                    dir_stats = (
+                        dir_exp.groupby("DirectorList")["Your Rating"]
+                        .agg(["count", "mean"])
+                        .reset_index()
+                    )
+                    dir_stats = dir_stats[dir_stats["count"] >= 3]
+                    if not dir_stats.empty:
+                        dir_stats = dir_stats.sort_values(
+                            ["count", "mean"], ascending=[False, False]
+                        ).head(20)
+                        dir_stats["mean"] = dir_stats["mean"].round(2)
+                        st.dataframe(
+                            dir_stats.rename(
+                                columns={
+                                    "DirectorList": "Director",
+                                    "count": "Nº pelis",
+                                    "mean": "Tu nota media"
+                                }
+                            ),
+                            hide_index=True,
+                            use_container_width=True
+                        )
+                    else:
+                        st.write("No hay directores con al menos 3 películas vistas.")
+                else:
+                    st.write("No se pudo descomponer la lista de directores.")
+            else:
+                st.write("No hay información de directores en los datos filtrados.")
+        else:
+            st.write("El CSV no tiene columna 'Directors'.")
+
+        # 5) Ranking de actores más vistos (si existe columna)
+        st.markdown("### 🎭 Actores/actrices que más ves")
+
+        if "Actors" in filtered.columns:
+            tmp_act = filtered.copy()
+            tmp_act = tmp_act[tmp_act["Actors"].notna() & (tmp_act["Actors"].astype(str).str.strip() != "")]
+            if not tmp_act.empty:
+                act_exp = tmp_act.copy()
+                act_exp["Actors"] = act_exp["Actors"].astype(str)
+                act_exp = act_exp.assign(
+                    ActorList=act_exp["Actors"].apply(lambda x: [a.strip() for a in x.split(",")])
+                )
+                act_exp = act_exp.explode("ActorList")
+                act_exp = act_exp[act_exp["ActorList"] != ""]
+
+                if not act_exp.empty:
+                    act_stats = (
+                        act_exp.groupby("ActorList")["Your Rating"]
+                        .agg(["count", "mean"])
+                        .reset_index()
+                    )
+                    act_stats = act_stats[act_stats["count"] >= 3]
+                    if not act_stats.empty:
+                        act_stats = act_stats.sort_values(
+                            ["count", "mean"], ascending=[False, False]
+                        ).head(20)
+                        act_stats["mean"] = act_stats["mean"].round(2)
+                        st.dataframe(
+                            act_stats.rename(
+                                columns={
+                                    "ActorList": "Actor/Actriz",
+                                    "count": "Nº pelis",
+                                    "mean": "Tu nota media"
+                                }
+                            ),
+                            hide_index=True,
+                            use_container_width=True
+                        )
+                    else:
+                        st.write("No hay actores/actrices con al menos 3 películas vistas.")
+                else:
+                    st.write("No se pudo descomponer la lista de actores.")
+            else:
+                st.write("No hay información de actores en los datos filtrados.")
+        else:
+            st.write("El CSV no tiene columna 'Actors'.")
+
 # ============================================================
 #                   LISTA AFI 100 (10th Anniversary)
 # ============================================================
@@ -959,6 +1219,7 @@ with st.expander("Ver progreso en la lista AFI 100", expanded=True):
                 return None
             return cands.iloc[0]
 
+        # mismo año
         m = _try(candidates[candidates["NormTitle"] == afi_norm])
         if m is not None:
             return m
@@ -975,6 +1236,7 @@ with st.expander("Ver progreso en la lista AFI 100", expanded=True):
         if m is not None:
             return m
 
+        # ignorar año
         candidates = df_full
 
         m = _try(candidates[candidates["NormTitle"] == afi_norm])

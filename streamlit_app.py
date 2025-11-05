@@ -129,59 +129,6 @@ AFI_LIST = [
     {"Rank": 100, "Title": "Ben-Hur", "Year": 1959},
 ]
 
-# ----------------- Base de datos de premios por película (Vista Festival) -----------------
-# Puedes ir ampliando este listado con las pelis que te interesen.
-AWARDS_DB = [
-    {
-        "Title": "Oppenheimer",
-        "Year": 2023,
-        "Awards": [
-            "🏆 Oscar — Mejor Película",
-            "🏆 Oscar — Mejor Director (Christopher Nolan)",
-            "🏆 Golden Globes — Best Motion Picture (Drama)",
-            "🏆 BAFTA — Best Film",
-            "🏆 PGA — Darryl F. Zanuck Award (Best Theatrical Motion Picture)",
-            "🏆 SAG — Outstanding Performance by a Cast in a Motion Picture",
-            "🏆 Critics Choice Awards — Best Picture",
-        ],
-    },
-    {
-        "Title": "Everything Everywhere All at Once",
-        "Year": 2022,
-        "Awards": [
-            "🏆 Oscar — Mejor Película",
-            "🏆 Oscar — Mejor Dirección",
-            "🏆 Independent Spirit Awards — Best Feature",
-            "🏆 Critics Choice Awards — Best Picture",
-            "🏆 SAG — Ensemble in a Motion Picture",
-            "🏆 Golden Globes — Multiple acting wins",
-        ],
-    },
-    {
-        "Title": "Parasite",
-        "Year": 2019,
-        "Awards": [
-            "🏆 Oscar — Mejor Película",
-            "🏆 Oscar — Mejor Dirección",
-            "🏆 Oscar — Mejor Película Internacional",
-            "🏆 Golden Globes — Best Motion Picture (Foreign Language)",
-            "🏆 BAFTA — Best Film Not in the English Language",
-            "🏆 Palme d'Or — Festival de Cannes",
-        ],
-    },
-    {
-        "Title": "Anatomy of a Fall",
-        "Year": 2023,
-        "Awards": [
-            "🏆 Palme d'Or — Festival de Cannes",
-            "🏆 Golden Globes — Best Motion Picture (Non-English Language)",
-            "🏆 European Film Awards — Best Film",
-        ],
-    },
-    # Añade aquí todas las que quieras ir trackeando
-]
-
-
 def normalize_title(s: str) -> str:
     """Normaliza un título para compararlo (minúsculas, sin espacios ni signos)."""
     return re.sub(r"[^a-z0-9]+", "", str(s).lower())
@@ -321,6 +268,75 @@ def get_tmdb_vote_average(title, year=None):
 
 
 @st.cache_data
+def get_omdb_awards(title, year=None):
+    """
+    Consulta OMDb y devuelve info de premios:
+    - raw: texto original del campo Awards
+    - oscars: nº de Oscars detectados
+    - emmys: nº de Emmys detectados
+    """
+    api_key = st.secrets.get("OMDB_API_KEY", None)
+    if api_key is None:
+        return None
+
+    if not title or pd.isna(title):
+        return None
+
+    params = {
+        "apikey": api_key,
+        "t": str(title).strip(),
+    }
+
+    y = None
+    try:
+        if year is not None and not pd.isna(year):
+            y = int(float(year))
+    except Exception:
+        y = None
+
+    if y is not None:
+        params["y"] = y
+
+    try:
+        r = requests.get("https://www.omdbapi.com/", params=params, timeout=4)
+        if r.status_code != 200:
+            return None
+
+        data = r.json()
+        if data.get("Response") != "True":
+            return None
+
+        awards_str = data.get("Awards", "")
+        if not awards_str or awards_str == "N/A":
+            return {"raw": None, "oscars": 0, "emmys": 0}
+
+        text_lower = awards_str.lower()
+
+        oscars = 0
+        emmys = 0
+
+        m_osc = re.search(r"won\s+(\d+)\s+oscars?", text_lower)
+        if m_osc:
+            oscars = int(m_osc.group(1))
+
+        m_emmy1 = re.search(r"won\s+(\d+)\s+primetime\s+emmys?", text_lower)
+        m_emmy2 = re.search(r"won\s+(\d+)\s+emmys?", text_lower)
+        m_emmy3 = re.search(r"won\s+(\d+)\s+emmy\b", text_lower)
+        for m in [m_emmy1, m_emmy2, m_emmy3]:
+            if m:
+                emmys = int(m.group(1))
+                break
+
+        return {
+            "raw": awards_str,
+            "oscars": oscars,
+            "emmys": emmys,
+        }
+    except Exception:
+        return None
+
+
+@st.cache_data
 def get_streaming_availability(title, year=None, country="US"):
     """
     Devuelve lista de plataformas de streaming para un título.
@@ -332,7 +348,6 @@ def get_streaming_availability(title, year=None, country="US"):
         return None
 
     try:
-        # EJEMPLO genérico: deberás adaptar endpoint y parsing real
         params = {
             "apiKey": API_KEY,
             "search_field": "title",
@@ -398,12 +413,10 @@ else:
         )
         st.stop()
 
-# Comprobación básica: necesitamos al menos 'Title'
 if "Title" not in df.columns:
     st.error("El CSV debe contener una columna 'Title' para poder funcionar.")
     st.stop()
 
-# Normalización para matching AFI, premios, etc.
 df["NormTitle"] = df["Title"].apply(normalize_title)
 
 if "Year" in df.columns:
@@ -413,13 +426,13 @@ else:
 
 # ----------------- Tema oscuro fijo + CSS -----------------
 
-primary_bg = "#020617"     # slate-950
+primary_bg = "#020617"
 secondary_bg = "#020617"
-text_color = "#e5e7eb"     # zinc-200
-card_bg = "rgba(15,23,42,0.9)"  # glass dark
-accent_color = "#eab308"   # amber-500
+text_color = "#e5e7eb"
+card_bg = "rgba(15,23,42,0.9)"
+accent_color = "#eab308"
 accent_soft = "rgba(234,179,8,0.25)"
-accent_alt = "#38bdf8"     # sky-400
+accent_alt = "#38bdf8"
 
 st.markdown(
     f"""
@@ -1274,78 +1287,102 @@ with st.expander("Ver progreso en la lista AFI 100", expanded=True):
     )
 
 # ============================================================
-#                   VISTA FESTIVAL (por película)
+#                   VISTA FESTIVAL — OMDb (Oscars / Emmys)
 # ============================================================
 
 st.markdown("---")
-st.markdown("## 🏆 Vista Festival — Temporada de premios por película")
+st.markdown("## 🏆 Vista Festival — Oscars y Emmys (online)")
 
-with st.expander("Ver qué películas de tus resultados arrasaron en premios", expanded=False):
-    if filtered.empty:
+with st.expander("Consultar premios vía OMDb (Oscars / Emmys)", expanded=False):
+    if st.secrets.get("OMDB_API_KEY", None) is None:
+        st.info(
+            "Para usar esta sección, añade `OMDB_API_KEY` a tus secrets de Streamlit "
+            "(puedes conseguir una API key gratuita en omdbapi.com)."
+        )
+    elif filtered.empty:
         st.info("No hay resultados bajo los filtros actuales.")
     else:
-        awards_df = pd.DataFrame(AWARDS_DB)
-        awards_df["NormTitle"] = awards_df["Title"].apply(normalize_title)
-        awards_df["YearInt"] = awards_df["Year"]
-
-        merged = filtered.merge(
-            awards_df[["NormTitle", "YearInt", "Awards"]],
-            on=["NormTitle", "YearInt"],
-            how="inner"
+        max_items = st.slider(
+            "Máximo de películas a comprobar en OMDb",
+            min_value=5,
+            max_value=40,
+            value=12,
+            step=1,
+            key="vista_festival_max",
         )
 
-        if merged.empty:
-            st.write("Ninguna de las películas filtradas tiene premios registrados en tu base de datos de premios.")
-            st.write("Puedes ampliar AWARDS_DB en el código para seguir más títulos.")
-        else:
-            st.write(
-                "Mostrando las películas de los resultados filtrados que tienen premios importantes "
-                "en tu base de datos (Oscars, Globos de Oro, BAFTA, Cannes, etc.)."
+        subset = filtered.head(max_items)
+        showed_any = False
+
+        for _, row in subset.iterrows():
+            titulo = row.get("Title", "Sin título")
+            year = row.get("Year", None)
+            your_rating = row.get("Your Rating", None)
+            imdb_rating = row.get("IMDb Rating", None)
+            url = row.get("URL", "")
+
+            info = get_omdb_awards(titulo, year)
+            if not info:
+                continue
+
+            oscars = info.get("oscars", 0)
+            emmys = info.get("emmys", 0)
+            raw = info.get("raw", None)
+
+            if oscars == 0 and emmys == 0:
+                continue
+
+            showed_any = True
+
+            base_rating = your_rating if pd.notna(your_rating) else imdb_rating
+            border_color, glow_color = get_rating_colors(base_rating)
+
+            badges = []
+            if oscars:
+                plural = "Oscar" if oscars == 1 else "Oscars"
+                badges.append(f"🏆 {oscars} {plural}")
+            if emmys:
+                plural_e = "Emmy" if emmys == 1 else "Emmys"
+                badges.append(f"📺 {emmys} {plural_e}")
+
+            badges_str = " · ".join(badges) if badges else "Premios detectados (sin detalle)."
+
+            extra_text = (
+                f"<br><span style='opacity:0.75;font-size:0.75rem;'>"
+                f"Texto OMDb: {raw}</span>"
+                if raw
+                else ""
             )
 
-            for _, row in merged.sort_values("Year").iterrows():
-                titulo = row.get("Title", "Sin título")
-                year = row.get("Year", "")
-                your_rating = row.get("Your Rating", None)
-                imdb_rating = row.get("IMDb Rating", None)
-                url = row.get("URL", "")
-                awards_list = row.get("Awards", [])
+            st.markdown(
+                f"""
+                <div class="movie-card" style="
+                    border-color: {border_color};
+                    box-shadow:
+                        0 0 0 1px rgba(15,23,42,0.9),
+                        0 0 26px {glow_color};
+                    margin-bottom: 12px;
+                ">
+                  <div class="movie-title">
+                    {titulo}{f" ({int(year)})" if year is not None and not pd.isna(year) else ""}
+                  </div>
+                  <div class="movie-sub">
+                    {f"⭐ Tu nota: {fmt_rating(your_rating)}<br>" if pd.notna(your_rating) else ""}
+                    {f"IMDb: {fmt_rating(imdb_rating)}<br>" if pd.notna(imdb_rating) else ""}
+                    <b>Oscars / Emmys:</b> {badges_str}
+                    {extra_text}<br>
+                    {f'<a href="{url}" target="_blank">Ver en IMDb</a>' if isinstance(url, str) and url.startswith("http") else ""}
+                  </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
 
-                base_rating = your_rating if pd.notna(your_rating) else imdb_rating
-                border_color, glow_color = get_rating_colors(base_rating)
-
-                awards_html = ""
-                if isinstance(awards_list, list):
-                    awards_html = "<ul style='margin-top:4px; margin-bottom:4px; padding-left:16px;'>"
-                    for a in awards_list:
-                        awards_html += f"<li>{a}</li>"
-                    awards_html += "</ul>"
-                elif isinstance(awards_list, str):
-                    awards_html = awards_list
-
-                st.markdown(
-                    f"""
-                    <div class="movie-card" style="
-                        border-color: {border_color};
-                        box-shadow:
-                            0 0 0 1px rgba(15,23,42,0.9),
-                            0 0 26px {glow_color};
-                        margin-bottom: 14px;
-                    ">
-                      <div class="movie-title">
-                        {titulo}{f" ({int(year)})" if pd.notna(year) else ""}
-                      </div>
-                      <div class="movie-sub">
-                        {f"⭐ Tu nota: {fmt_rating(your_rating)}<br>" if pd.notna(your_rating) else ""}
-                        {f"IMDb: {fmt_rating(imdb_rating)}<br>" if pd.notna(imdb_rating) else ""}
-                        <b>Premios destacados:</b>
-                        {awards_html}
-                        {f'<a href="{url}" target="_blank">Ver en IMDb</a>' if isinstance(url, str) and url.startswith("http") else ""}
-                      </div>
-                    </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
+        if not showed_any:
+            st.write(
+                "No encontré Oscars ni Emmys en OMDb para las películas revisadas "
+                f"(límite: {max_items} películas)."
+            )
 
 # ============================================================
 #                  DÓNDE VERLAS (PLATAFORMAS)
@@ -1397,7 +1434,7 @@ else:
                         margin-bottom: 10px;
                     ">
                       <div class="movie-title">
-                        {titulo}{f" ({int(year)})" if pd.notna(year) else ""}
+                        {titulo}{f" ({int(year)})" if year is not None and not pd.isna(year) else ""}
                       </div>
                       <div class="movie-sub">
                         {f"⭐ Tu nota: {fmt_rating(your_rating)}<br>" if pd.notna(your_rating) else ""}

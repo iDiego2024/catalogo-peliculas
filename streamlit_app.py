@@ -2,6 +2,10 @@ import streamlit as st
 import pandas as pd
 import requests
 import random
+import altair as alt
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_pdf import PdfPages
+import io
 
 # ----------------- Configuración general -----------------
 
@@ -29,8 +33,6 @@ TMDB_IMAGE_BASE = "https://image.tmdb.org/t/p/w342"
 @st.cache_data
 def load_data(file_path_or_buffer):
     df = pd.read_csv(file_path_or_buffer)
-
-    # Asegurar tipos básicos
 
     # Tu nota
     if "Your Rating" in df.columns:
@@ -148,6 +150,53 @@ def get_tmdb_vote_average(title, year=None):
         return None
 
 
+def create_pdf_report(df_for_pdf: pd.DataFrame) -> bytes:
+    """Crea un PDF con algunos gráficos básicos de reportería."""
+    buf = io.BytesIO()
+    with PdfPages(buf) as pdf:
+        # Películas por año
+        d = df_for_pdf[df_for_pdf["Year"].notna()]
+        if not d.empty:
+            fig, ax = plt.subplots()
+            by_year = d.groupby("Year").size()
+            by_year.sort_index().plot(kind="line", ax=ax)
+            ax.set_title("Películas por año")
+            ax.set_xlabel("Año")
+            ax.set_ylabel("Número de películas")
+            pdf.savefig(fig)
+            plt.close(fig)
+
+        # Histograma de tu nota
+        if "Your Rating" in df_for_pdf.columns and df_for_pdf["Your Rating"].notna().any():
+            fig, ax = plt.subplots()
+            df_for_pdf["Your Rating"].dropna().plot(
+                kind="hist", bins=10, ax=ax
+            )
+            ax.set_title("Distribución de tu nota (Your Rating)")
+            ax.set_xlabel("Nota")
+            ax.set_ylabel("Frecuencia")
+            pdf.savefig(fig)
+            plt.close(fig)
+
+        # Comparación tu nota vs IMDb
+        if (
+            "Your Rating" in df_for_pdf.columns
+            and "IMDb Rating" in df_for_pdf.columns
+        ):
+            corr_df = df_for_pdf[["Your Rating", "IMDb Rating"]].dropna()
+            if not corr_df.empty:
+                fig, ax = plt.subplots()
+                ax.scatter(corr_df["IMDb Rating"], corr_df["Your Rating"], alpha=0.6)
+                ax.set_xlabel("IMDb Rating")
+                ax.set_ylabel("Your Rating")
+                ax.set_title("Dispersión: tu nota vs IMDb")
+                pdf.savefig(fig)
+                plt.close(fig)
+
+    buf.seek(0)
+    return buf
+
+
 # ----------------- Carga de datos -----------------
 
 st.sidebar.header("📂 Datos")
@@ -174,11 +223,11 @@ else:
 st.sidebar.header("🖼️ Opciones de visualización")
 show_posters_fav = st.sidebar.checkbox(
     "Mostrar pósters TMDb en favoritas (nota ≥ 9)",
-    value=True  # activado por defecto
+    value=True
 )
 show_gallery = st.sidebar.checkbox(
     "Mostrar galería de pósters para resultados filtrados",
-    value=True  # activado por defecto
+    value=True
 )
 
 # ----------------- Filtros -----------------
@@ -319,7 +368,7 @@ for col in ["Your Rating", "IMDb Rating"]:
     if col in table_df.columns:
         table_df[col] = table_df[col].apply(lambda v: f"{v:.1f}" if pd.notna(v) else "")
 
-# Centrado global de celdas de tablas
+# Centrado global de celdas
 st.markdown(
     """
     <style>
@@ -337,7 +386,7 @@ st.dataframe(
     hide_index=True
 )
 
-# ----------------- ReporterÍa / análisis -----------------
+# ----------------- ReporterÍa básica -----------------
 
 st.markdown("---")
 st.subheader("📊 Análisis y tendencias")
@@ -426,6 +475,103 @@ else:
                 st.write("No hay datos suficientes de año para calcular décadas.")
         else:
             st.write("No hay IMDb Rating disponible.")
+
+    # ----------------- Análisis avanzado -----------------
+    st.markdown("### 🔬 Análisis avanzado (tu nota vs IMDb)")
+
+    if (
+        "Your Rating" in filtered.columns
+        and "IMDb Rating" in filtered.columns
+    ):
+        corr_df = filtered[["Your Rating", "IMDb Rating"]].dropna()
+    else:
+        corr_df = pd.DataFrame()
+
+    col_adv1, col_adv2 = st.columns(2)
+
+    with col_adv1:
+        if not corr_df.empty and len(corr_df) > 1:
+            corr = corr_df["Your Rating"].corr(corr_df["IMDb Rating"])
+            st.metric("Correlación Pearson (tu nota vs IMDb)", f"{corr:.2f}")
+        else:
+            st.metric("Correlación Pearson (tu nota vs IMDb)", "N/A")
+        st.write(
+            "Valores cercanos a 1 indican que sueles coincidir con IMDb; "
+            "cercanos a 0 indican independencia; negativos, que tiendes a ir en contra."
+        )
+
+    with col_adv2:
+        st.markdown("**Dispersión: IMDb vs tu nota**")
+        if not corr_df.empty:
+            scatter_chart = (
+                alt.Chart(corr_df.reset_index())
+                .mark_circle(size=60, opacity=0.6)
+                .encode(
+                    x=alt.X("IMDb Rating:Q", scale=alt.Scale(domain=[0, 10])),
+                    y=alt.Y("Your Rating:Q", scale=alt.Scale(domain=[0, 10])),
+                    tooltip=["IMDb Rating", "Your Rating"],
+                )
+                .properties(height=300)
+            )
+            st.altair_chart(scatter_chart, use_container_width=True)
+        else:
+            st.write("No hay datos suficientes para el gráfico de dispersión.")
+
+    # Heatmap género vs década (tu nota media)
+    st.markdown("**Mapa de calor: tu nota media por género y década**")
+    if "GenreList" in filtered.columns and "Your Rating" in filtered.columns:
+        tmp = filtered.copy()
+        tmp = tmp[tmp["Year"].notna() & tmp["Your Rating"].notna()]
+        if not tmp.empty:
+            tmp["Decade"] = (tmp["Year"] // 10 * 10).astype(int).astype(str)
+            tmp_genres = tmp.explode("GenreList")
+            tmp_genres = tmp_genres[
+                tmp_genres["GenreList"].notna() &
+                (tmp_genres["GenreList"] != "")
+            ]
+            if not tmp_genres.empty:
+                heat_df = (
+                    tmp_genres
+                    .groupby(["GenreList", "Decade"])["Your Rating"]
+                    .mean()
+                    .reset_index()
+                )
+                heat_chart = (
+                    alt.Chart(heat_df)
+                    .mark_rect()
+                    .encode(
+                        x=alt.X("Decade:N", title="Década"),
+                        y=alt.Y("GenreList:N", title="Género"),
+                        color=alt.Color(
+                            "Your Rating:Q",
+                            title="Tu nota media",
+                            scale=alt.Scale(scheme="viridis"),
+                        ),
+                        tooltip=["GenreList", "Decade", "Your Rating"],
+                    )
+                    .properties(height=400)
+                )
+                st.altair_chart(heat_chart, use_container_width=True)
+            else:
+                st.write("No hay datos suficientes de géneros para el mapa de calor.")
+        else:
+            st.write("No hay datos suficientes (año + tu nota) para el mapa de calor.")
+    else:
+        st.write("Faltan columnas necesarias para el mapa de calor.")
+
+    # ----------------- Exportar reporte -----------------
+    st.markdown("### 📄 Exportar reporte en PDF")
+
+    if filtered.empty:
+        st.info("No hay datos para generar un reporte PDF con los filtros actuales.")
+    else:
+        pdf_bytes = create_pdf_report(filtered)
+        st.download_button(
+            "Descargar reporte PDF",
+            data=pdf_bytes,
+            file_name="reporte_peliculas.pdf",
+            mime="application/pdf",
+        )
 
 # ----------------- Favoritas con póster -----------------
 

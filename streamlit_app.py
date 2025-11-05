@@ -120,6 +120,13 @@ else:
         )
         st.stop()
 
+# Checkbox para controlar los pósters
+st.sidebar.header("🖼️ Opciones de visualización")
+show_posters = st.sidebar.checkbox(
+    "Mostrar pósters de TMDb (puede ser más lento)",
+    value=False
+)
+
 # ----------------- Filtros en sidebar -----------------
 
 st.sidebar.header("🎛️ Filtros")
@@ -303,11 +310,14 @@ if "Your Rating" in filtered.columns:
                 col_img, col_info = st.columns([1, 3])
 
                 with col_img:
-                    poster_url = get_poster_url(titulo, year)
-                    if poster_url:
-                        st.image(poster_url, use_container_width=True)
+                    if show_posters:
+                        poster_url = get_poster_url(titulo, year)
+                        if poster_url:
+                            st.image(poster_url, use_container_width=True)
+                        else:
+                            st.write("Sin póster")
                     else:
-                        st.write("Sin póster")
+                        st.write("Póster desactivado (actívalo en la barra lateral).")
 
                 with col_info:
                     st.write(f"**Géneros:** {genres}")

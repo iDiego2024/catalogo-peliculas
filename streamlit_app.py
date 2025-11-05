@@ -345,15 +345,33 @@ if "Year" in table_df.columns:
         lambda y: "" if pd.isna(y) else str(int(y))
     )
 
-# Centramos las columnas numéricas
-styled_table = table_df.style.set_properties(
-    subset=["Year", "Your Rating", "IMDb Rating"],
-    **{"text-align": "center"}
-).set_table_styles(
-    [
-        {"selector": "th.col_heading", "props": [("text-align", "center")]},
-        {"selector": "td", "props": [("vertical-align", "middle")]}
-    ]
+# Función para formatear ratings como x.x
+def _fmt_rating(v):
+    if pd.isna(v):
+        return ""
+    try:
+        return f"{float(v):.1f}"
+    except Exception:
+        return v
+
+# Estilo: ratings con 1 decimal y columnas centradas
+styled_table = (
+    table_df.style
+    .format(
+        {
+            "Your Rating": _fmt_rating,
+            "IMDb Rating": _fmt_rating,
+        }
+    )
+    .set_properties(
+        subset=["Year", "Your Rating", "IMDb Rating"],
+        **{"text-align": "center"}
+    )
+    .set_table_styles(
+        [
+            {"selector": "th.col_heading", "props": [("text-align", "center")]},
+        ]
+    )
 )
 
 st.dataframe(
@@ -361,3 +379,263 @@ st.dataframe(
     use_container_width=True,
     hide_index=True
 )
+
+# ----------------- Favoritas con póster -----------------
+
+st.markdown("---")
+st.subheader("⭐ Tus favoritas (nota ≥ 9) en este filtro")
+
+if "Your Rating" in filtered.columns:
+    fav = filtered[filtered["Your Rating"] >= 9].copy()
+    if not fav.empty:
+        fav = fav.sort_values(["Your Rating", "Year"], ascending=[False, True])
+
+        # límite para no hacer demasiadas llamadas a la API
+        fav = fav.head(12)
+
+        for _, row in fav.iterrows():
+            titulo = row.get("Title", "Sin título")
+            year = row.get("Year", "")
+            nota = row.get("Your Rating", "")
+            imdb_rating = row.get("IMDb Rating", "")
+            genres = row.get("Genres", "")
+            directors = row.get("Directors", "")
+            url = row.get("URL", "")
+
+            etiqueta = f"{int(nota)}/10 — {titulo}"
+            if pd.notna(year):
+                etiqueta += f" ({int(year)})"
+
+            with st.expander(etiqueta):
+                col_img, col_info = st.columns([1, 3])
+
+                with col_img:
+                    if show_posters_fav:
+                        poster_url = get_poster_url(titulo, year)
+                        if isinstance(poster_url, str) and poster_url:
+                            st.image(poster_url)
+                        else:
+                            st.write("Sin póster")
+                    else:
+                        st.write("Póster desactivado (actívalo en la barra lateral).")
+
+                with col_info:
+                    st.write(f"**Géneros:** {genres}")
+                    st.write(f"**Director(es):** {directors}")
+                    if pd.notna(imdb_rating):
+                        st.write(f"**IMDb:** {imdb_rating}")
+                    if isinstance(url, str) and url.startswith("http"):
+                        st.write(f"[Ver en IMDb]({url})")
+    else:
+        st.write("No hay películas con nota ≥ 9 bajo estos filtros.")
+else:
+    st.write("No se encontró la columna 'Your Rating' en el CSV.")
+
+
+# ----------------- Galería tipo Netflix -----------------
+
+st.markdown("---")
+st.subheader("🎞 Galería de pósters (resultados filtrados)")
+
+if show_gallery:
+    if TMDB_API_KEY is None:
+        st.warning("No hay TMDB_API_KEY configurada en Secrets, no puedo cargar pósters.")
+    elif filtered.empty:
+        st.info("No hay resultados con los filtros actuales.")
+    else:
+        gal = filtered.copy()
+
+        # Orden por tu nota (desc) y año
+        if "Your Rating" in gal.columns:
+            gal = gal.sort_values(
+                ["Your Rating", "Year"],
+                ascending=[False, True]
+            )
+
+        gal = gal.head(24)  # máximo 24 pósters
+
+        st.write(f"Mostrando hasta {len(gal)} pósters de las películas filtradas.")
+
+        cols = st.columns(4)  # 4 columnas tipo grid
+
+        for i, (_, row) in enumerate(gal.iterrows()):
+            col = cols[i % 4]
+            with col:
+                titulo = row.get("Title", "Sin título")
+                year = row.get("Year", "")
+                nota = row.get("Your Rating", "")
+                imdb_rating = row.get("IMDb Rating", "")
+                url = row.get("URL", "")
+
+                poster_url = get_poster_url(titulo, year)
+                if isinstance(poster_url, str) and poster_url:
+                    st.image(poster_url)
+                else:
+                    st.write("Sin póster")
+
+                # Texto bajo el póster
+                if pd.notna(year):
+                    st.markdown(f"**{titulo}** ({int(year)})")
+                else:
+                    st.markdown(f"**{titulo}**")
+
+                if pd.notna(nota):
+                    st.write(f"⭐ Tu nota: {nota}")
+                if pd.notna(imdb_rating):
+                    st.write(f"IMDb: {imdb_rating}")
+                if isinstance(url, str) and url.startswith("http"):
+                    st.write(f"[IMDb]({url})")
+else:
+    st.info("Activa 'Mostrar galería de pósters para resultados filtrados' en la barra lateral para ver la vista tipo Netflix.")
+
+
+# ----------------- Recomendaciones por ratings globales -----------------
+
+st.markdown("---")
+st.subheader("🎯 Recomendaciones por ratings globales (IMDb + TMDb)")
+
+col_a, col_b = st.columns(2)
+with col_a:
+    min_imdb_global = st.slider("Mínimo IMDb Rating", 0.0, 10.0, 8.0, 0.1)
+with col_b:
+    min_tmdb_global = st.slider("Mínimo TMDb Rating", 0.0, 10.0, 7.5, 0.1)
+
+if st.button("Generar recomendaciones globales"):
+    if TMDB_API_KEY is None:
+        st.warning("No hay TMDB_API_KEY configurada en Secrets, no puedo consultar TMDb.")
+    else:
+        pool = filtered.copy()
+        if "IMDb Rating" in pool.columns:
+            pool = pool[pool["IMDb Rating"].notna() & (pool["IMDb Rating"] >= min_imdb_global)]
+        else:
+            pool = pool.iloc[0:0]
+
+        if pool.empty:
+            st.warning("No hay películas con IMDb Rating suficiente bajo los filtros actuales.")
+        else:
+            pool = pool.sort_values("IMDb Rating", ascending=False).head(40)
+
+            recomendaciones = []
+            for _, row in pool.iterrows():
+                titulo = row.get("Title", "Sin título")
+                year = row.get("Year", None)
+                tmdb_rating = get_tmdb_vote_average(titulo, year)
+                if tmdb_rating is None:
+                    continue
+                if tmdb_rating >= min_tmdb_global:
+                    recomendaciones.append((row, tmdb_rating))
+                if len(recomendaciones) >= 10:
+                    break
+
+            if not recomendaciones:
+                st.info("No encontré películas que estén altas tanto en IMDb como en TMDb con esos umbrales.")
+            else:
+                for row, tmdb_rating in recomendaciones:
+                    titulo = row.get("Title", "Sin título")
+                    year = row.get("Year", "")
+                    your_rating = row.get("Your Rating", "")
+                    imdb_rating = row.get("IMDb Rating", "")
+                    genres = row.get("Genres", "")
+                    url = row.get("URL", "")
+
+                    col_img, col_info = st.columns([1, 3])
+                    with col_img:
+                        poster_url = get_poster_url(titulo, year)
+                        if isinstance(poster_url, str) and poster_url:
+                            st.image(poster_url)
+                        else:
+                            st.write("Sin póster")
+
+                    with col_info:
+                        if pd.notna(year):
+                            st.markdown(f"**{titulo}** ({int(year)})")
+                        else:
+                            st.markdown(f"**{titulo}**")
+
+                        if pd.notna(your_rating):
+                            st.write(f"⭐ Tu nota: {your_rating}")
+                        if pd.notna(imdb_rating):
+                            st.write(f"IMDb: {imdb_rating}")
+                        st.write(f"TMDb: {tmdb_rating:.1f}")
+                        if isinstance(genres, str) and genres:
+                            st.write(f"**Géneros:** {genres}")
+                        if isinstance(url, str) and url.startswith("http"):
+                            st.write(f"[Ver en IMDb]({url})")
+
+
+# ----------------- ¿Qué ver hoy? -----------------
+
+st.markdown("---")
+st.subheader("🎲 ¿Qué ver hoy? (según tu propio gusto)")
+
+modo = st.selectbox(
+    "Modo de recomendación",
+    [
+        "Entre todas las películas filtradas",
+        "Solo favoritas (nota ≥ 9)",
+        "Entre tus 8–10 de los últimos 20 años"
+    ]
+)
+
+if st.button("Recomendar una película"):
+    pool = filtered.copy()
+
+    if modo == "Solo favoritas (nota ≥ 9)":
+        if "Your Rating" in pool.columns:
+            pool = pool[pool["Your Rating"] >= 9]
+        else:
+            pool = pool.iloc[0:0]
+
+    elif modo == "Entre tus 8–10 de los últimos 20 años":
+        if "Your Rating" in pool.columns and "Year" in pool.columns:
+            pool = pool[
+                (pool["Your Rating"] >= 8) &
+                (pool["Year"].notna()) &
+                (pool["Year"] >= (pd.Timestamp.now().year - 20))
+            ]
+        else:
+            pool = pool.iloc[0:0]
+
+    if pool.empty:
+        st.warning("No hay películas que cumplan con el modo seleccionado y los filtros actuales.")
+    else:
+        if "Your Rating" in pool.columns and pool["Your Rating"].notna().any():
+            notas = pool["Your Rating"].fillna(0)
+            pesos = (notas + 1).tolist()
+        else:
+            pesos = None  # selección uniforme
+
+        idx = random.choices(pool.index.tolist(), weights=pesos, k=1)[0]
+        peli = pool.loc[idx]
+
+        titulo = peli.get("Title", "Sin título")
+        year = peli.get("Year", "")
+        nota = peli.get("Your Rating", "")
+        imdb_rating = peli.get("IMDb Rating", "")
+        genres = peli.get("Genres", "")
+        directors = peli.get("Directors", "")
+        url = peli.get("URL", "")
+
+        col_img, col_info = st.columns([1, 3])
+
+        with col_img:
+            poster_url = get_poster_url(titulo, year)
+            if isinstance(poster_url, str) and poster_url:
+                st.image(poster_url)
+            else:
+                st.write("Sin póster")
+
+        with col_info:
+            if pd.notna(year):
+                st.markdown(f"## {titulo} ({int(year)})")
+            else:
+                st.markdown(f"## {titulo}")
+
+            if pd.notna(nota):
+                st.write(f"⭐ Tu nota: {nota}")
+            if pd.notna(imdb_rating):
+                st.write(f"IMDb: {imdb_rating}")
+            st.write(f"**Géneros:** {genres}")
+            st.write(f"**Director(es):** {directors}")
+            if isinstance(url, str) and url.startswith("http"):
+                st.write(f"[Ver en IMDb]({url})")

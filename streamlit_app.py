@@ -289,14 +289,13 @@ with col3:
 # ----------------- Buscador centrado -----------------
 
 st.markdown("### 🔎 Buscar por título")
-c1, c2, c3 = st.columns([1, 2, 1])
 
-with c2:
-    search_title = st.text_input(
-        "Buscar en título / título original",
-        label_visibility="collapsed",
-        placeholder="Escribe parte del título…"
-    )
+search_title = st.text_input(
+    "Buscar en título / título original",
+    label_visibility="collapsed",
+    placeholder="Escribe parte del título…",
+    key="busqueda_titulo"
+)
 
 st.markdown("---")
 

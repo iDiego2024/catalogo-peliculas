@@ -129,6 +129,58 @@ AFI_LIST = [
     {"Rank": 100, "Title": "Ben-Hur", "Year": 1959},
 ]
 
+# ----------------- Base de datos de premios por película (Vista Festival) -----------------
+# Puedes ir ampliando este listado con las pelis que te interesen.
+AWARDS_DB = [
+    {
+        "Title": "Oppenheimer",
+        "Year": 2023,
+        "Awards": [
+            "🏆 Oscar — Mejor Película",
+            "🏆 Oscar — Mejor Director (Christopher Nolan)",
+            "🏆 Golden Globes — Best Motion Picture (Drama)",
+            "🏆 BAFTA — Best Film",
+            "🏆 PGA — Darryl F. Zanuck Award (Best Theatrical Motion Picture)",
+            "🏆 SAG — Outstanding Performance by a Cast in a Motion Picture",
+            "🏆 Critics Choice Awards — Best Picture",
+        ],
+    },
+    {
+        "Title": "Everything Everywhere All at Once",
+        "Year": 2022,
+        "Awards": [
+            "🏆 Oscar — Mejor Película",
+            "🏆 Oscar — Mejor Dirección",
+            "🏆 Independent Spirit Awards — Best Feature",
+            "🏆 Critics Choice Awards — Best Picture",
+            "🏆 SAG — Ensemble in a Motion Picture",
+            "🏆 Golden Globes — Multiple acting wins",
+        ],
+    },
+    {
+        "Title": "Parasite",
+        "Year": 2019,
+        "Awards": [
+            "🏆 Oscar — Mejor Película",
+            "🏆 Oscar — Mejor Dirección",
+            "🏆 Oscar — Mejor Película Internacional",
+            "🏆 Golden Globes — Best Motion Picture (Foreign Language)",
+            "🏆 BAFTA — Best Film Not in the English Language",
+            "🏆 Palme d'Or — Festival de Cannes",
+        ],
+    },
+    {
+        "Title": "Anatomy of a Fall",
+        "Year": 2023,
+        "Awards": [
+            "🏆 Palme d'Or — Festival de Cannes",
+            "🏆 Golden Globes — Best Motion Picture (Non-English Language)",
+            "🏆 European Film Awards — Best Film",
+        ],
+    },
+    # Añade aquí todas las que quieras ir trackeando
+]
+
 
 def normalize_title(s: str) -> str:
     """Normaliza un título para compararlo (minúsculas, sin espacios ni signos)."""
@@ -291,8 +343,6 @@ def get_streaming_availability(title, year=None, country="US"):
         if r.status_code != 200:
             return None
         data = r.json()
-        # Esta parte es completamente dependiente de la API concreta.
-        # Lo dejamos como ejemplo: retornar lista de nombres de plataforma si existiera.
         platforms = set()
         for item in data.get("titles", []):
             if item.get("title", "").lower() == str(title).lower():
@@ -316,19 +366,14 @@ def get_rating_colors(rating):
         return ("rgba(148,163,184,0.8)", "rgba(15,23,42,0.0)")
 
     if r >= 9:
-        # Verde neón
         return ("#22c55e", "rgba(34,197,94,0.55)")
     elif r >= 8:
-        # Azul cielo
         return ("#0ea5e9", "rgba(14,165,233,0.55)")
     elif r >= 7:
-        # Violeta
         return ("#a855f7", "rgba(168,85,247,0.50)")
     elif r >= 6:
-        # Ámbar
         return ("#eab308", "rgba(234,179,8,0.45)")
     else:
-        # Naranja/rojo suave
         return ("#f97316", "rgba(249,115,22,0.45)")
 
 
@@ -358,7 +403,7 @@ if "Title" not in df.columns:
     st.error("El CSV debe contener una columna 'Title' para poder funcionar.")
     st.stop()
 
-# Normalización para matching AFI y otras cosas
+# Normalización para matching AFI, premios, etc.
 df["NormTitle"] = df["Title"].apply(normalize_title)
 
 if "Year" in df.columns:
@@ -366,7 +411,7 @@ if "Year" in df.columns:
 else:
     df["YearInt"] = -1
 
-# ----------------- Tema oscuro fijo + CSS espectacular -----------------
+# ----------------- Tema oscuro fijo + CSS -----------------
 
 primary_bg = "#020617"     # slate-950
 secondary_bg = "#020617"
@@ -379,7 +424,6 @@ accent_alt = "#38bdf8"     # sky-400
 st.markdown(
     f"""
     <style>
-    /* Fuentes y variables */
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
 
     :root {{
@@ -400,7 +444,6 @@ st.markdown(
         font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
     }}
 
-    /* Sidebar */
     [data-testid="stSidebar"] > div:first-child {{
         background: linear-gradient(180deg, rgba(15,23,42,0.98), rgba(15,23,42,0.90));
         border-right: 1px solid rgba(148,163,184,0.25);
@@ -412,11 +455,6 @@ st.markdown(
         font-size: 0.9rem;
     }}
 
-    [data-testid="stSidebar"] .stSlider > div {{
-        color: #e5e7eb !important;
-    }}
-
-    /* Encabezados */
     h1, h2, h3, h4 {{
         font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
         letter-spacing: 0.04em;
@@ -439,11 +477,6 @@ st.markdown(
         margin-bottom: 0.25rem;
     }}
 
-    h3 {{
-        font-weight: 600;
-    }}
-
-    /* Texto principal y enlaces */
     .stMarkdown, .stText, .stCaption, p {{
         color: var(--text-color);
     }}
@@ -456,7 +489,6 @@ st.markdown(
         text-decoration: underline;
     }}
 
-    /* Tarjetas de métricas */
     [data-testid="stMetric"] {{
         background: radial-gradient(circle at top left, rgba(15,23,42,0.95), rgba(15,23,42,0.75));
         padding: 14px 16px;
@@ -479,12 +511,6 @@ st.markdown(
         font-size: 1.4rem !important;
     }}
 
-    /* Línea separadora */
-    hr {{
-        border-top: 1px solid rgba(148,163,184,0.35);
-    }}
-
-    /* Expander */
     [data-testid="stExpander"] {{
         border-radius: var(--radius-xl) !important;
         border: 1px solid rgba(148,163,184,0.5);
@@ -493,12 +519,6 @@ st.markdown(
         box-shadow: 0 12px 30px rgba(15,23,42,0.7);
     }}
 
-    [data-testid="stExpander"] > details > summary {{
-        color: #e5e7eb;
-        font-weight: 600;
-    }}
-
-    /* Botones */
     button[kind="secondary"], button[kind="primary"], .stButton > button {{
         border-radius: 999px !important;
         border: 1px solid rgba(250, 204, 21, 0.7) !important;
@@ -513,49 +533,6 @@ st.markdown(
         transition: all 0.18s ease-out;
     }}
 
-    .stButton > button:hover {{
-        transform: translateY(-1px) scale(1.02);
-        box-shadow: 0 16px 40px rgba(234,179,8,0.55);
-        border-color: rgba(250, 204, 21, 0.95) !important;
-    }}
-
-    .stButton > button:active {{
-        transform: translateY(0px) scale(0.99);
-        box-shadow: 0 6px 18px rgba(0,0,0,0.7);
-    }}
-
-    /* Inputs */
-    .stTextInput > div > div > input,
-    .stSelectbox > div > div,
-    .stMultiSelect > div > div {{
-        background-color: rgba(15,23,42,0.9) !important;
-        border-radius: 999px !important;
-        border: 1px solid rgba(148,163,184,0.6) !important;
-        color: #e5e7eb !important;
-        font-size: 0.9rem !important;
-    }}
-
-    .stSlider > div > div > div > div {{
-        color: #e5e7eb !important;
-    }}
-
-    /* Radio horizontal */
-    .stRadio > div[role="radiogroup"] > label {{
-        background: rgba(15,23,42,0.9);
-        border-radius: 999px;
-        padding: 0.25rem 0.9rem;
-        border: 1px solid rgba(148,163,184,0.5);
-        margin-right: 0.3rem;
-        font-size: 0.8rem;
-    }}
-
-    .stRadio > div[role="radiogroup"] > label[data-baseweb="radio"]:has(input:checked) {{
-        border-color: var(--accent);
-        background: radial-gradient(circle at top left, rgba(234,179,8,0.35), rgba(15,23,42,1));
-        color: #fefce8;
-    }}
-
-    /* Movie cards */
     .movie-card {{
         background: radial-gradient(circle at top left, rgba(15,23,42,0.9), rgba(15,23,42,0.85));
         border-radius: var(--radius-lg);
@@ -567,25 +544,6 @@ st.markdown(
         position: relative;
         overflow: hidden;
         transition: all 0.16s ease-out;
-    }}
-
-    .movie-card::before {{
-        content: "";
-        position: absolute;
-        inset: 0;
-        background: radial-gradient(circle at top left, rgba(234,179,8,0.16), transparent 55%);
-        opacity: 0;
-        transition: opacity 0.2s ease-out;
-        pointer-events: none;
-    }}
-
-    .movie-card:hover {{
-        transform: translateY(-3px) translateZ(0) scale(1.01);
-        box-shadow: 0 22px 60px rgba(0,0,0,0.95);
-    }}
-
-    .movie-card:hover::before {{
-        opacity: 1;
     }}
 
     .movie-title {{
@@ -601,57 +559,6 @@ st.markdown(
         font-size: 0.78rem;
         line-height: 1.35;
         color: #cbd5f5;
-    }}
-
-    /* Dataframe / tablas */
-    .stDataFrame, .stTable {{
-        border-radius: var(--radius-lg);
-        overflow: hidden;
-        border: 1px solid rgba(148,163,184,0.45);
-        box-shadow: 0 16px 38px rgba(15,23,42,0.85);
-    }}
-
-    .stDataFrame table {{
-        background-color: rgba(15,23,42,0.9) !important;
-        color: #e5e7eb !important;
-        font-size: 0.82rem;
-    }}
-
-    .stDataFrame table thead tr th {{
-        background: radial-gradient(circle at top, rgba(15,23,42,0.9), rgba(15,23,42,0.8)) !important;
-        color: #e5e7eb !important;
-        text-transform: uppercase;
-        letter-spacing: 0.08em;
-        font-size: 0.7rem;
-    }}
-
-    .stDataFrame tbody tr:nth-child(even) {{
-        background-color: rgba(15,23,42,0.7) !important;
-    }}
-
-    .stDataFrame tbody tr:hover {{
-        background-color: rgba(55,65,81,0.7) !important;
-    }}
-
-    /* Scrollbar */
-    ::-webkit-scrollbar {{
-        width: 8px;
-        height: 8px;
-    }}
-    ::-webkit-scrollbar-track {{
-        background: rgba(15,23,42,0.9);
-    }}
-    ::-webkit-scrollbar-thumb {{
-        background: linear-gradient(180deg, var(--accent-alt), var(--accent));
-        border-radius: 999px;
-    }}
-
-    /* Caption (filtros activos) */
-    .stCaption, .stMarkdown p small {{
-        color: #9ca3af !important;
-        font-size: 0.72rem !important;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
     }}
     </style>
     """,
@@ -749,7 +656,6 @@ if selected_genres:
 if selected_directors:
     filtered = filtered[filtered["Directors"].isin(selected_directors)]
 
-# Resumen filtros activos
 st.caption(
     f"Filtros activos → Años: {year_range[0]}–{year_range[1]} | "
     f"Your Rating: {rating_range[0]}–{rating_range[1]} | "
@@ -790,7 +696,6 @@ if search_query:
 
     filtered = filtered[filtered.apply(match_any, axis=1)]
 
-# Orden final tras búsqueda
 if order_by in filtered.columns:
     filtered = filtered.sort_values(order_by, ascending=order_asc)
 
@@ -821,7 +726,6 @@ cols_to_show = [
                 "Genres", "Directors", "Date Rated", "URL"]
     if c in filtered.columns
 ]
-
 table_df = filtered[cols_to_show].copy()
 
 
@@ -858,10 +762,7 @@ if "IMDb Rating" in table_df.columns:
 styled_table = (
     table_df.style
     .format(format_dict)
-    .set_properties(
-        subset=subset_cols,
-        **{"text-align": "center"}
-    )
+    .set_properties(subset=subset_cols, **{"text-align": "center"})
     .set_table_styles(
         [
             {"selector": "th.col_heading", "props": [("text-align", "center")]},
@@ -1239,11 +1140,6 @@ with st.expander("Ver análisis de gustos personales", expanded=False):
                 )
                 st.altair_chart(chart, use_container_width=True)
 
-                st.write(
-                    "Si tu curva (Your Rating) va **bajando** con los años mientras IMDb se mantiene, "
-                    "es que te estás volviendo más exigente. Si sube, te estás ablandando con la edad cinéfila 😄."
-                )
-
                 tmp["Decade"] = (tmp["Year"] // 10 * 10).astype(int)
                 decade_diff = (
                     tmp.groupby("Decade")
@@ -1289,7 +1185,6 @@ with st.expander("Ver progreso en la lista AFI 100", expanded=True):
             df["NormTitle"] = ""
 
     def find_match(afi_norm, year, df_full):
-        """Intenta encontrar una película de tu catálogo que corresponda a la entrada AFI."""
         candidates = df_full[df_full["YearInt"] == year]
 
         def _try(cands):
@@ -1379,75 +1274,78 @@ with st.expander("Ver progreso en la lista AFI 100", expanded=True):
     )
 
 # ============================================================
-#                   VISTA FESTIVAL (Premios)
+#                   VISTA FESTIVAL (por película)
 # ============================================================
 
 st.markdown("---")
-st.markdown("## 🏆 Vista Festival — Temporada de premios")
+st.markdown("## 🏆 Vista Festival — Temporada de premios por película")
 
-with st.expander("Ver progreso en premios (Oscars, Globos de Oro, BAFTA, etc.)", expanded=False):
+with st.expander("Ver qué películas de tus resultados arrasaron en premios", expanded=False):
+    if filtered.empty:
+        st.info("No hay resultados bajo los filtros actuales.")
+    else:
+        awards_df = pd.DataFrame(AWARDS_DB)
+        awards_df["NormTitle"] = awards_df["Title"].apply(normalize_title)
+        awards_df["YearInt"] = awards_df["Year"]
 
-    FESTIVAL_LIST = [
-        # Ejemplos. Amplía esta lista a tu gusto.
-        {"Award": "Academy Awards (Oscars)", "Category": "Best Picture", "Year": 2024, "Title": "Oppenheimer"},
-        {"Award": "Academy Awards (Oscars)", "Category": "Best Picture", "Year": 2023, "Title": "Everything Everywhere All at Once"},
-        {"Award": "Golden Globe Awards", "Category": "Best Motion Picture – Drama", "Year": 2023, "Title": "The Fabelmans"},
-        {"Award": "Golden Globe Awards", "Category": "Best Motion Picture – Musical or Comedy", "Year": 2023, "Title": "The Banshees of Inisherin"},
-        {"Award": "BAFTA Film Awards", "Category": "Best Film", "Year": 2023, "Title": "All Quiet on the Western Front"},
-        {"Award": "Critics Choice Awards", "Category": "Best Picture", "Year": 2023, "Title": "Everything Everywhere All at Once"},
-        {"Award": "Independent Spirit Awards", "Category": "Best Feature", "Year": 2023, "Title": "Everything Everywhere All at Once"},
-        {"Award": "Cannes – Palme d’Or", "Category": "Palme d'Or", "Year": 2023, "Title": "Anatomy of a Fall"},
-        {"Award": "Cannes – Palme d’Or", "Category": "Palme d'Or", "Year": 2019, "Title": "Parasite"},
-        # Puedes añadir Emmys, DGA, PGA, etc., aunque muchos son TV.
-    ]
+        merged = filtered.merge(
+            awards_df[["NormTitle", "YearInt", "Awards"]],
+            on=["NormTitle", "YearInt"],
+            how="inner"
+        )
 
-    fest_df = pd.DataFrame(FESTIVAL_LIST)
-    fest_df["NormTitle"] = fest_df["Title"].apply(normalize_title)
-    fest_df["YearInt"] = fest_df["Year"]
+        if merged.empty:
+            st.write("Ninguna de las películas filtradas tiene premios registrados en tu base de datos de premios.")
+            st.write("Puedes ampliar AWARDS_DB en el código para seguir más títulos.")
+        else:
+            st.write(
+                "Mostrando las películas de los resultados filtrados que tienen premios importantes "
+                "en tu base de datos (Oscars, Globos de Oro, BAFTA, Cannes, etc.)."
+            )
 
-    fest_df["Seen"] = False
-    fest_df["Your Rating"] = None
-    fest_df["IMDb Rating"] = None
-    fest_df["URL"] = None
+            for _, row in merged.sort_values("Year").iterrows():
+                titulo = row.get("Title", "Sin título")
+                year = row.get("Year", "")
+                your_rating = row.get("Your Rating", None)
+                imdb_rating = row.get("IMDb Rating", None)
+                url = row.get("URL", "")
+                awards_list = row.get("Awards", [])
 
-    for idx, row in fest_df.iterrows():
-        candidates = df[
-            (df["NormTitle"] == row["NormTitle"]) &
-            (df["YearInt"] == row["YearInt"])
-        ]
-        if not candidates.empty:
-            first = candidates.iloc[0]
-            fest_df.at[idx, "Seen"] = True
-            fest_df.at[idx, "Your Rating"] = first.get("Your Rating")
-            fest_df.at[idx, "IMDb Rating"] = first.get("IMDb Rating")
-            fest_df.at[idx, "URL"] = first.get("URL")
+                base_rating = your_rating if pd.notna(your_rating) else imdb_rating
+                border_color, glow_color = get_rating_colors(base_rating)
 
-    total_fest = len(fest_df)
-    seen_fest = int(fest_df["Seen"].sum())
-    pct_fest = (seen_fest / total_fest) if total_fest > 0 else 0.0
+                awards_html = ""
+                if isinstance(awards_list, list):
+                    awards_html = "<ul style='margin-top:4px; margin-bottom:4px; padding-left:16px;'>"
+                    for a in awards_list:
+                        awards_html += f"<li>{a}</li>"
+                    awards_html += "</ul>"
+                elif isinstance(awards_list, str):
+                    awards_html = awards_list
 
-    col_f1, col_f2 = st.columns(2)
-    with col_f1:
-        st.metric("Películas vistas del listado festival", f"{seen_fest}/{total_fest}")
-    with col_f2:
-        st.metric("Progreso temporada premios", f"{pct_fest * 100:.1f}%")
-    st.progress(pct_fest)
-
-    fest_df["Vista"] = fest_df["Seen"].map({True: "✅", False: "—"})
-    fest_display = fest_df[[
-        "Award", "Category", "Year", "Title", "Vista", "Your Rating", "IMDb Rating", "URL"
-    ]].copy()
-    fest_display["Year"] = fest_display["Year"].astype(str)
-    fest_display["Your Rating"] = fest_display["Your Rating"].apply(fmt_rating)
-    fest_display["IMDb Rating"] = fest_display["IMDb Rating"].apply(fmt_rating)
-
-    st.markdown("### Detalle de títulos de la temporada de premios (sobre tu catálogo)")
-
-    st.dataframe(
-        fest_display,
-        hide_index=True,
-        use_container_width=True
-    )
+                st.markdown(
+                    f"""
+                    <div class="movie-card" style="
+                        border-color: {border_color};
+                        box-shadow:
+                            0 0 0 1px rgba(15,23,42,0.9),
+                            0 0 26px {glow_color};
+                        margin-bottom: 14px;
+                    ">
+                      <div class="movie-title">
+                        {titulo}{f" ({int(year)})" if pd.notna(year) else ""}
+                      </div>
+                      <div class="movie-sub">
+                        {f"⭐ Tu nota: {fmt_rating(your_rating)}<br>" if pd.notna(your_rating) else ""}
+                        {f"IMDb: {fmt_rating(imdb_rating)}<br>" if pd.notna(imdb_rating) else ""}
+                        <b>Premios destacados:</b>
+                        {awards_html}
+                        {f'<a href="{url}" target="_blank">Ver en IMDb</a>' if isinstance(url, str) and url.startswith("http") else ""}
+                      </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
 
 # ============================================================
 #                  DÓNDE VERLAS (PLATAFORMAS)
@@ -1456,20 +1354,18 @@ with st.expander("Ver progreso en premios (Oscars, Globos de Oro, BAFTA, etc.)",
 st.markdown("---")
 st.markdown("## 🌐 Dónde ver las películas (plataformas de streaming)")
 
-with st.expander("Consultar plataformas de streaming para tus resultados filtrados", expanded=False):
-    if filtered.empty:
-        st.info("No hay resultados bajo los filtros actuales.")
-    else:
-        streaming_key = st.secrets.get("STREAMING_API_KEY", None)
-        if streaming_key is None:
-            st.warning(
-                "No hay STREAMING_API_KEY configurada en Secrets.\n\n"
-                "Configura una API de disponibilidad de streaming para usar esta sección."
-            )
+streaming_key = st.secrets.get("STREAMING_API_KEY", None)
+
+if streaming_key is None:
+    st.info("Sección de plataformas desactivada por ahora (no hay STREAMING_API_KEY configurada).")
+else:
+    with st.expander("Consultar plataformas de streaming para tus resultados filtrados", expanded=False):
+        if filtered.empty:
+            st.info("No hay resultados bajo los filtros actuales.")
         else:
             st.write(
                 "Consulta aproximada de plataformas para algunas de las películas filtradas "
-                "(para evitar abusar de la API, se limita a unas cuantas)."
+                "(para no abusar de la API, se limita a unas cuantas)."
             )
             max_items = st.slider(
                 "Número máximo de películas a consultar",
@@ -1528,7 +1424,6 @@ with st.expander("Películas que tú puntúas muy alto y IMDb no tanto", expande
             st.write("No hay suficientes películas con ambas notas (tuya e IMDb) para este análisis.")
         else:
             diff_df["Diff"] = diff_df["Your Rating"] - diff_df["IMDb Rating"]
-            # Criterio: Tu nota >= 8 y diferencia >= 1.0
             infraval = diff_df[(diff_df["Your Rating"] >= 8) & (diff_df["Diff"] >= 1.0)]
             infraval = infraval.sort_values("Diff", ascending=False).head(30)
 

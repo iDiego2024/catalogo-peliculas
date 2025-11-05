@@ -2,6 +2,11 @@ import streamlit as st
 import pandas as pd
 import requests  # 👈 nuevo
 
+TMDB_API_KEY = st.secrets.get("506c9387e637ecb32fd3b1ab6ade4259", None)
+TMDB_SEARCH_URL = "https://api.themoviedb.org/3/search/movie"
+TMDB_IMAGE_BASE = "https://image.tmdb.org/t/p/w342"
+
+
 # ----------------- Configuración general -----------------
 
 st.set_page_config(
@@ -15,6 +20,48 @@ st.write(
     "App basada en tu export de IMDb. "
     "Puedes filtrar por año, nota, géneros, director y buscar por título."
 )
+
+@st.cache_data
+def get_poster_url(title, year=None):
+    """Devuelve la URL del póster de TMDb para un título (y opcionalmente año)."""
+    if TMDB_API_KEY is None:
+        return None  # No hay API key, no hacemos nada
+
+    if not title or pd.isna(title):
+        return None
+
+    params = {
+        "api_key": TMDB_API_KEY,
+        "query": title,
+    }
+    # Si tenemos año, ayuda a afinar resultados
+    if year is not None and not pd.isna(year):
+        try:
+            params["year"] = int(year)
+        except Exception:
+            pass
+
+    try:
+        r = requests.get(TMDB_SEARCH_URL, params=params, timeout=5)
+        if r.status_code != 200:
+            return None
+
+        data = r.json()
+        results = data.get("results", [])
+        if not results:
+            return None
+
+        poster_path = results[0].get("poster_path")
+        if not poster_path:
+            return None
+
+        return f"{TMDB_IMAGE_BASE}{poster_path}"
+    except Exception:
+        return None
+
+
+
+
 
 # ----------------- Carga de datos -----------------
 
@@ -250,13 +297,25 @@ if "Your Rating" in filtered.columns:
                 etiqueta += f" ({int(year)})"
 
             with st.expander(etiqueta):
-                st.write(f"**Géneros:** {genres}")
-                st.write(f"**Director(es):** {directors}")
-                if pd.notna(imdb_rating):
-                    st.write(f"**IMDb:** {imdb_rating}")
-                if isinstance(url, str) and url.startswith("http"):
-                    st.write(f"[Ver en IMDb]({url})")
+                # layout en dos columnas: póster + info
+                col_img, col_info = st.columns([1, 3])
+
+                with col_img:
+                    poster_url = get_poster_url(titulo, year)
+                    if poster_url:
+                        st.image(poster_url, use_container_width=True)
+                    else:
+                        st.write("Sin póster")
+
+                with col_info:
+                    st.write(f"**Géneros:** {genres}")
+                    st.write(f"**Director(es):** {directors}")
+                    if pd.notna(imdb_rating):
+                        st.write(f"**IMDb:** {imdb_rating}")
+                    if isinstance(url, str) and url.startswith("http"):
+                        st.write(f"[Ver en IMDb]({url})")
     else:
         st.write("No hay películas con nota ≥ 9 bajo estos filtros.")
 else:
     st.write("No se encontró la columna 'Your Rating' en el CSV.")
+

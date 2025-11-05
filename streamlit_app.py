@@ -289,21 +289,16 @@ if "Year" in df.columns:
 else:
     df["YearInt"] = -1
 
-# ----------------- Tema (claro / oscuro) + CSS -----------------
+# ----------------- Tema (siempre oscuro) + CSS -----------------
+
+# Valores fijos de modo oscuro
+primary_bg = "#0e1117"
+secondary_bg = "#161b22"
+text_color = "#f9fafb"
+card_bg = "#161b22"
 
 st.sidebar.header("🎨 Tema")
-theme = st.sidebar.radio("Modo de color", ["Claro", "Oscuro"], index=0)
-
-if theme == "Oscuro":
-    primary_bg = "#0e1117"
-    secondary_bg = "#161b22"
-    text_color = "#f9fafb"
-    card_bg = "#161b22"
-else:
-    primary_bg = "#ffffff"
-    secondary_bg = "#f5f5f5"
-    text_color = "#111827"
-    card_bg = "#ffffff"
+st.sidebar.write("Modo oscuro activado 🌚")
 
 st.markdown(
     f"""
@@ -341,6 +336,8 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
+
+
 
 # ----------------- Opciones de visualización -----------------
 

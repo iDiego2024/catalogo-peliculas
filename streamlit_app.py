@@ -122,8 +122,12 @@ else:
 
 # Checkbox para controlar los pósters
 st.sidebar.header("🖼️ Opciones de visualización")
-show_posters = st.sidebar.checkbox(
-    "Mostrar pósters de TMDb (puede ser más lento)",
+show_posters_fav = st.sidebar.checkbox(
+    "Mostrar pósters TMDb en favoritas (nota ≥ 9)",
+    value=False
+)
+show_gallery = st.sidebar.checkbox(
+    "Mostrar galería de pósters para resultados filtrados",
     value=False
 )
 
@@ -310,10 +314,9 @@ if "Your Rating" in filtered.columns:
                 col_img, col_info = st.columns([1, 3])
 
                 with col_img:
-                    if show_posters:
+                    if show_posters_fav:
                         poster_url = get_poster_url(titulo, year)
                         if isinstance(poster_url, str) and poster_url:
-                        # Usamos la forma más compatible de st.image
                             st.image(poster_url)
                         else:
                             st.write("Sin póster")
@@ -331,3 +334,60 @@ if "Your Rating" in filtered.columns:
         st.write("No hay películas con nota ≥ 9 bajo estos filtros.")
 else:
     st.write("No se encontró la columna 'Your Rating' en el CSV.")
+
+# ----------------- Galería tipo Netflix -----------------
+
+st.markdown("---")
+st.subheader("🎞 Galería de pósters (resultados filtrados)")
+
+if show_gallery:
+    if TMDB_API_KEY is None:
+        st.warning("No hay TMDB_API_KEY configurada en Secrets, no puedo cargar pósters.")
+    elif filtered.empty:
+        st.info("No hay resultados con los filtros actuales.")
+    else:
+        # Tomamos un subconjunto limitado para no saturar la API
+        gal = filtered.copy()
+
+        # Orden por tu nota (desc) y año
+        if "Your Rating" in gal.columns:
+            gal = gal.sort_values(
+                ["Your Rating", "Year"],
+                ascending=[False, True]
+            )
+
+        gal = gal.head(24)  # máximo 24 pósters
+
+        st.write(f"Mostrando hasta {len(gal)} pósters de las películas filtradas.")
+
+        cols = st.columns(4)  # 4 columnas tipo grid
+
+        for i, (_, row) in enumerate(gal.iterrows()):
+            col = cols[i % 4]
+            with col:
+                titulo = row.get("Title", "Sin título")
+                year = row.get("Year", "")
+                nota = row.get("Your Rating", "")
+                imdb_rating = row.get("IMDb Rating", "")
+                url = row.get("URL", "")
+
+                poster_url = get_poster_url(titulo, year)
+                if isinstance(poster_url, str) and poster_url:
+                    st.image(poster_url)
+                else:
+                    st.write("Sin póster")
+
+                # Texto bajo el póster
+                if pd.notna(year):
+                    st.markdown(f"**{titulo}** ({int(year)})")
+                else:
+                    st.markdown(f"**{titulo}**")
+
+                if pd.notna(nota):
+                    st.write(f"⭐ Tu nota: {nota}")
+                if pd.notna(imdb_rating):
+                    st.write(f"IMDb: {imdb_rating}")
+                if isinstance(url, str) and url.startswith("http"):
+                    st.write(f"[IMDb]({url})")
+else:
+    st.info("Activa 'Mostrar galería de pósters para resultados filtrados' en la barra lateral para ver la vista tipo Netflix.")

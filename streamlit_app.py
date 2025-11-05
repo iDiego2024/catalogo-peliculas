@@ -272,8 +272,8 @@ def get_omdb_awards(title, year=None):
     """
     Consulta OMDb y devuelve info de premios:
     - raw: texto original del campo Awards
-    - oscars: nº de Oscars detectados
-    - emmys: nº de Emmys detectados
+    - oscars: nº de Oscars ganados
+    - emmys: nº de Emmys ganados
     """
     api_key = st.secrets.get("OMDB_API_KEY", None)
     if api_key is None:
@@ -282,58 +282,87 @@ def get_omdb_awards(title, year=None):
     if not title or pd.isna(title):
         return None
 
-    params = {
-        "apikey": api_key,
-        "t": str(title).strip(),
-    }
+    base_url = "http://www.omdbapi.com/"
 
-    y = None
+    # Normalizar un poco el título para OMDb (quitamos cosas entre paréntesis)
+    raw_title = str(title).strip()
+    simple_title = re.sub(r"\s*\(.*?\)\s*$", "", raw_title).strip()
+
+    year_int = None    # conversión segura de año
     try:
         if year is not None and not pd.isna(year):
-            y = int(float(year))
+            year_int = int(float(year))
     except Exception:
-        y = None
+        year_int = None
 
-    if y is not None:
-        params["y"] = y
-
-    try:
-        r = requests.get("https://www.omdbapi.com/", params=params, timeout=4)
-        if r.status_code != 200:
+    def _query(params):
+        try:
+            r = requests.get(base_url, params=params, timeout=5)
+            if r.status_code != 200:
+                return None
+            data = r.json()
+            if data.get("Response") != "True":
+                return None
+            return data
+        except Exception:
             return None
 
-        data = r.json()
-        if data.get("Response") != "True":
-            return None
+    data = None
 
-        awards_str = data.get("Awards", "")
-        if not awards_str or awards_str == "N/A":
-            return {"raw": None, "oscars": 0, "emmys": 0}
+    # 1) Intento con título tal cual y simplificado
+    for t in [raw_title, simple_title]:
+        params = {"apikey": api_key, "t": t}
+        if year_int:
+            params["y"] = year_int
+        data = _query(params)
+        if data:
+            break
 
-        text_lower = awards_str.lower()
+    # 2) Si eso falla, búsqueda general y luego por imdbID
+    if not data:
+        params = {"apikey": api_key, "s": simple_title}
+        if year_int:
+            params["y"] = year_int
+        search = _query(params)
+        if search and "Search" in search:
+            best = search["Search"][0]
+            imdb_id = best.get("imdbID")
+            if imdb_id:
+                data = _query({"apikey": api_key, "i": imdb_id})
 
-        oscars = 0
-        emmys = 0
-
-        m_osc = re.search(r"won\s+(\d+)\s+oscars?", text_lower)
-        if m_osc:
-            oscars = int(m_osc.group(1))
-
-        m_emmy1 = re.search(r"won\s+(\d+)\s+primetime\s+emmys?", text_lower)
-        m_emmy2 = re.search(r"won\s+(\d+)\s+emmys?", text_lower)
-        m_emmy3 = re.search(r"won\s+(\d+)\s+emmy\b", text_lower)
-        for m in [m_emmy1, m_emmy2, m_emmy3]:
-            if m:
-                emmys = int(m.group(1))
-                break
-
-        return {
-            "raw": awards_str,
-            "oscars": oscars,
-            "emmys": emmys,
-        }
-    except Exception:
+    if not data:
         return None
+
+    awards_str = data.get("Awards", "")
+    if not awards_str or awards_str == "N/A":
+        return {"raw": None, "oscars": 0, "emmys": 0}
+
+    text_lower = awards_str.lower()
+
+    oscars = 0
+    emmys = 0
+
+    # Oscars ganados (ej: "Won 4 Oscars.")
+    m_osc = re.search(r"won\s+(\d+)\s+oscars?", text_lower)
+    if m_osc:
+        oscars = int(m_osc.group(1))
+
+    # Emmys ganados
+    for pat in [
+        r"won\s+(\d+)\s+primetime\s+emmys?",
+        r"won\s+(\d+)\s+emmys?",
+        r"won\s+(\d+)\s+emmy\b",
+    ]:
+        m = re.search(pat, text_lower)
+        if m:
+            emmys = int(m.group(1))
+            break
+
+    return {
+        "raw": awards_str,
+        "oscars": oscars,
+        "emmys": emmys,
+    }
 
 
 @st.cache_data
@@ -341,7 +370,7 @@ def get_streaming_availability(title, year=None, country="US"):
     """
     Devuelve lista de plataformas de streaming para un título.
     Necesita STREAMING_API_KEY en st.secrets.
-    La implementación es genérica: deberás adaptarla al proveedor que uses.
+    La implementación es genérica (Watchmode); adáptala si usas otro proveedor.
     """
     API_KEY = st.secrets.get("STREAMING_API_KEY", None)
     if API_KEY is None:
@@ -1329,7 +1358,8 @@ with st.expander("Consultar premios vía OMDb (Oscars / Emmys)", expanded=False)
             emmys = info.get("emmys", 0)
             raw = info.get("raw", None)
 
-            if oscars == 0 and emmys == 0:
+            # Si no hay Oscars ni Emmys y tampoco texto de premios, saltamos
+            if oscars == 0 and emmys == 0 and not raw:
                 continue
 
             showed_any = True
@@ -1380,7 +1410,7 @@ with st.expander("Consultar premios vía OMDb (Oscars / Emmys)", expanded=False)
 
         if not showed_any:
             st.write(
-                "No encontré Oscars ni Emmys en OMDb para las películas revisadas "
+                "No encontré Oscars ni Emmys (ni texto de premios) en OMDb para las películas revisadas "
                 f"(límite: {max_items} películas)."
             )
 

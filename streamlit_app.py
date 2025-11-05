@@ -58,6 +58,10 @@ def load_data(file_path_or_buffer):
         lambda x: [] if pd.isna(x) or x == "" else str(x).split(", ")
     )
 
+        # Parsear fecha correctamente
+    if "Date Rated" in df.columns:
+        df["Date Rated"] = pd.to_datetime(df["Date Rated"], errors="coerce").dt.date
+
     return df
 
 

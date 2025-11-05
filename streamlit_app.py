@@ -120,7 +120,7 @@ else:
         )
         st.stop()
 
-# Checkbox para controlar los pósters
+# Checkbox para controlar los pósters y galería
 st.sidebar.header("🖼️ Opciones de visualización")
 show_posters_fav = st.sidebar.checkbox(
     "Mostrar pósters TMDb en favoritas (nota ≥ 9)",
@@ -186,9 +186,6 @@ selected_directors = st.sidebar.multiselect(
     options=all_directors
 )
 
-# Búsqueda por texto
-search_title = st.sidebar.text_input("Buscar en título / título original")
-
 # Orden
 order_by = st.sidebar.selectbox(
     "Ordenar por",
@@ -196,7 +193,7 @@ order_by = st.sidebar.selectbox(
 )
 order_asc = st.sidebar.checkbox("Orden ascendente", value=False)
 
-# ----------------- Aplicar filtros -----------------
+# ----------------- Aplicar filtros básicos -----------------
 
 filtered = df.copy()
 
@@ -226,21 +223,6 @@ if selected_genres:
 if selected_directors:
     filtered = filtered[filtered["Directors"].isin(selected_directors)]
 
-# Búsqueda por título / título original
-title_cols = [c for c in ["Title", "Original Title"] if c in filtered.columns]
-
-if search_title and title_cols:
-    mask = False
-    for c in title_cols:
-        mask = mask | filtered[c].astype(str).str.contains(
-            search_title, case=False, na=False
-        )
-    filtered = filtered[mask]
-
-# Orden
-if order_by in filtered.columns:
-    filtered = filtered.sort_values(order_by, ascending=order_asc)
-
 # ----------------- Métricas rápidas -----------------
 
 col1, col2, col3 = st.columns(3)
@@ -266,7 +248,35 @@ with col3:
     else:
         st.metric("Promedio IMDb", "N/A")
 
+# ----------------- Buscador centrado -----------------
+
+st.markdown("### 🔎 Buscar por título")
+c1, c2, c3 = st.columns([1, 2, 1])
+
+with c2:
+    search_title = st.text_input(
+        "Buscar en título / título original",
+        label_visibility="collapsed",
+        placeholder="Escribe parte del título…"
+    )
+
 st.markdown("---")
+
+# ----------------- Aplicar búsqueda por texto -----------------
+
+title_cols = [c for c in ["Title", "Original Title"] if c in filtered.columns]
+
+if search_title and title_cols:
+    mask = False
+    for c in title_cols:
+        mask = mask | filtered[c].astype(str).str.contains(
+            search_title, case=False, na=False
+        )
+    filtered = filtered[mask]
+
+# Orden final
+if order_by in filtered.columns:
+    filtered = filtered.sort_values(order_by, ascending=order_asc)
 
 # ----------------- Tabla principal -----------------
 

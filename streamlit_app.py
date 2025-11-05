@@ -14,7 +14,7 @@ st.set_page_config(
 st.title("🎥 Mi catálogo de películas (IMDb)")
 st.write(
     "App basada en tu export de IMDb. "
-    "Puedes filtrar por año, nota, géneros, director y buscar por título."
+    "Puedes filtrar por año, nota, géneros, director y usar una búsqueda universal."
 )
 
 # ----------------- Config TMDb -----------------
@@ -233,7 +233,7 @@ order_by = st.sidebar.selectbox(
 )
 order_asc = st.sidebar.checkbox("Orden ascendente", value=False)
 
-# ----------------- Aplicar filtros -----------------
+# ----------------- Aplicar filtros básicos -----------------
 
 filtered = df.copy()
 
@@ -275,28 +275,39 @@ with col3:
     else:
         st.metric("Promedio IMDb", "N/A")
 
-# ----------------- Buscador -----------------
+# ----------------- Buscador universal -----------------
 
-st.markdown("### 🔎 Buscar por título")
+st.markdown("### 🔎 Búsqueda universal")
 
-search_title = st.text_input(
-    "Buscar en título / título original",
+search_query = st.text_input(
+    "Buscar en títulos, directores, géneros, años o calificaciones",
     label_visibility="collapsed",
-    placeholder="Escribe parte del título…",
-    key="busqueda_titulo"
+    placeholder="Escribe cualquier cosa…",
+    key="busqueda_universal"
 )
 
 st.markdown("---")
 
-title_cols = [c for c in ["Title", "Original Title"] if c in filtered.columns]
-if search_title and title_cols:
-    mask = False
-    for c in title_cols:
-        mask = mask | filtered[c].astype(str).str.contains(
-            search_title, case=False, na=False
-        )
-    filtered = filtered[mask]
+if search_query:
+    q = search_query.strip().lower()
 
+    def match_any(row):
+        # Concatena lo relevante en un solo string
+        campos = [
+            row.get("Title", ""),
+            row.get("Original Title", ""),
+            row.get("Directors", ""),
+            row.get("Genres", ""),
+            row.get("Year", ""),
+            row.get("Your Rating", ""),
+            row.get("IMDb Rating", "")
+        ]
+        texto = " ".join(str(x).lower() for x in campos if pd.notna(x))
+        return q in texto
+
+    filtered = filtered[filtered.apply(match_any, axis=1)]
+
+# Orden final tras la búsqueda
 if order_by in filtered.columns:
     filtered = filtered.sort_values(order_by, ascending=order_asc)
 
@@ -642,123 +653,4 @@ if st.button("Generar recomendaciones globales"):
             recomendaciones = []
             for _, row in pool.iterrows():
                 titulo = row.get("Title", "Sin título")
-                year = row.get("Year", None)
-                tmdb_rating = get_tmdb_vote_average(titulo, year)
-                if tmdb_rating is None:
-                    continue
-                if tmdb_rating >= min_tmdb_global:
-                    recomendaciones.append((row, tmdb_rating))
-                if len(recomendaciones) >= 10:
-                    break
-
-            if not recomendaciones:
-                st.info("No encontré películas que estén altas tanto en IMDb como en TMDb con esos umbrales.")
-            else:
-                for row, tmdb_rating in recomendaciones:
-                    titulo = row.get("Title", "Sin título")
-                    year = row.get("Year", "")
-                    your_rating = row.get("Your Rating", "")
-                    imdb_rating = row.get("IMDb Rating", "")
-                    genres = row.get("Genres", "")
-                    url = row.get("URL", "")
-
-                    col_img, col_info = st.columns([1, 3])
-                    with col_img:
-                        poster_url = get_poster_url(titulo, year)
-                        if isinstance(poster_url, str) and poster_url:
-                            st.image(poster_url)
-                        else:
-                            st.write("Sin póster")
-
-                    with col_info:
-                        if pd.notna(year):
-                            st.markdown(f"**{titulo}** ({int(year)})")
-                        else:
-                            st.markdown(f"**{titulo}**")
-
-                        if pd.notna(your_rating):
-                            st.write(f"⭐ Tu nota: {your_rating}")
-                        if pd.notna(imdb_rating):
-                            st.write(f"IMDb: {imdb_rating}")
-                        st.write(f"TMDb: {tmdb_rating:.1f}")
-                        if isinstance(genres, str) and genres:
-                            st.write(f"**Géneros:** {genres}")
-                        if isinstance(url, str) and url.startswith("http"):
-                            st.write(f"[Ver en IMDb]({url})")
-
-# ----------------- ¿Qué ver hoy? -----------------
-
-st.markdown("---")
-st.subheader("🎲 ¿Qué ver hoy? (según tu propio gusto)")
-
-modo = st.selectbox(
-    "Modo de recomendación",
-    [
-        "Entre todas las películas filtradas",
-        "Solo favoritas (nota ≥ 9)",
-        "Entre tus 8–10 de los últimos 20 años"
-    ]
-)
-
-if st.button("Recomendar una película"):
-    pool = filtered.copy()
-
-    if modo == "Solo favoritas (nota ≥ 9)":
-        if "Your Rating" in pool.columns:
-            pool = pool[pool["Your Rating"] >= 9]
-        else:
-            pool = pool.iloc[0:0]
-
-    elif modo == "Entre tus 8–10 de los últimos 20 años":
-        if "Your Rating" in pool.columns and "Year" in pool.columns:
-            pool = pool[
-                (pool["Your Rating"] >= 8) &
-                (pool["Year"].notna()) &
-                (pool["Year"] >= (pd.Timestamp.now().year - 20))
-            ]
-        else:
-            pool = pool.iloc[0:0]
-
-    if pool.empty:
-        st.warning("No hay películas que cumplan con el modo seleccionado y los filtros actuales.")
-    else:
-        if "Your Rating" in pool.columns and pool["Your Rating"].notna().any():
-            notas = pool["Your Rating"].fillna(0)
-            pesos = (notas + 1).tolist()
-        else:
-            pesos = None
-
-        idx = random.choices(pool.index.tolist(), weights=pesos, k=1)[0]
-        peli = pool.loc[idx]
-
-        titulo = peli.get("Title", "Sin título")
-        year = peli.get("Year", "")
-        nota = peli.get("Your Rating", "")
-        imdb_rating = peli.get("IMDb Rating", "")
-        genres = peli.get("Genres", "")
-        directors = peli.get("Directors", "")
-        url = peli.get("URL", "")
-
-        col_img, col_info = st.columns([1, 3])
-
-        with col_img:
-            poster_url = get_poster_url(titulo, year)
-            if isinstance(poster_url, str) and poster_url:
-                st.image(poster_url)
-            else:
-                st.write("Sin póster")
-
-        with col_info:
-            if pd.notna(year):
-                st.markdown(f"## {titulo} ({int(year)})")
-            else:
-                st.markdown(f"## {titulo}")
-
-            if pd.notna(nota):
-                st.write(f"⭐ Tu nota: {nota}")
-            if pd.notna(imdb_rating):
-                st.write(f"IMDb: {imdb_rating}")
-            st.write(f"**Géneros:** {genres}")
-            st.write(f"**Director(es):** {directors}")
-            if isinstance(url, str) and url.startswith("http"):
-                st.write(f"[Ver en IMDb]({url})")
+                year = ro

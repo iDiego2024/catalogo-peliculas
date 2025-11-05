@@ -180,7 +180,7 @@ show_gallery = st.sidebar.checkbox(
     value=True
 )
 
-# ----------------- Filtros -----------------
+# ----------------- Filtros (sidebar) -----------------
 
 st.sidebar.header("🎛️ Filtros")
 
@@ -259,31 +259,17 @@ if selected_genres:
 if selected_directors:
     filtered = filtered[filtered["Directors"].isin(selected_directors)]
 
-# ----------------- Métricas -----------------
+# ============================================================
+#                     BÚSQUEDA
+# ============================================================
 
-col1, col2, col3 = st.columns(3)
-with col1:
-    st.metric("Películas filtradas", len(filtered))
-with col2:
-    if "Your Rating" in filtered.columns and filtered["Your Rating"].notna().any():
-        st.metric("Promedio de tu nota", f"{filtered['Your Rating'].mean():.2f}")
-    else:
-        st.metric("Promedio de tu nota", "N/A")
-with col3:
-    if "IMDb Rating" in filtered.columns and filtered["IMDb Rating"].notna().any():
-        st.metric("Promedio IMDb", f"{filtered['IMDb Rating'].mean():.2f}")
-    else:
-        st.metric("Promedio IMDb", "N/A")
-
-# ----------------- Buscador (renombrado a "Búsqueda") -----------------
-
-st.markdown("### 🔎 Búsqueda")
+st.markdown("## 🔎 Búsqueda")
 
 search_query = st.text_input(
     "Buscar en títulos, directores, géneros, años o calificaciones",
     label_visibility="collapsed",
     placeholder="Escribe cualquier cosa…",
-    key="busqueda_universal"
+    key="busqueda"
 )
 
 st.markdown("---")
@@ -306,13 +292,31 @@ if search_query:
 
     filtered = filtered[filtered.apply(match_any, axis=1)]
 
-# Orden final tras la búsqueda
+# Orden final tras búsqueda
 if order_by in filtered.columns:
     filtered = filtered.sort_values(order_by, ascending=order_asc)
 
-# ----------------- Tabla principal -----------------
+# ============================================================
+#               RESUMEN + TABLA DE RESULTADOS
+# ============================================================
 
-st.subheader("📚 Resultados")
+st.markdown("## 📈 Resumen de resultados")
+
+col1, col2, col3 = st.columns(3)
+with col1:
+    st.metric("Películas filtradas", len(filtered))
+with col2:
+    if "Your Rating" in filtered.columns and filtered["Your Rating"].notna().any():
+        st.metric("Promedio de tu nota", f"{filtered['Your Rating'].mean():.2f}")
+    else:
+        st.metric("Promedio de tu nota", "N/A")
+with col3:
+    if "IMDb Rating" in filtered.columns and filtered["IMDb Rating"].notna().any():
+        st.metric("Promedio IMDb", f"{filtered['IMDb Rating'].mean():.2f}")
+    else:
+        st.metric("Promedio IMDb", "N/A")
+
+st.markdown("### 📚 Tabla de resultados")
 
 cols_to_show = [
     c for c in ["Title", "Year", "Your Rating", "IMDb Rating",
@@ -336,7 +340,7 @@ def fmt_rating(v):
     except Exception:
         return v
 
-# Diccionario de formatos solo para columnas presentes
+# Diccionario de formatos y columnas a centrar
 format_dict = {}
 subset_cols = []
 
@@ -352,7 +356,6 @@ if "IMDb Rating" in table_df.columns:
     format_dict["IMDb Rating"] = fmt_rating
     subset_cols.append("IMDb Rating")
 
-# Styler: formato + centrado de columnas numéricas
 styled_table = (
     table_df.style
     .format(format_dict)
@@ -373,10 +376,12 @@ st.dataframe(
     hide_index=True
 )
 
-# ----------------- ReporterÍa básica -----------------
+# ============================================================
+#                  ANÁLISIS Y TENDENCIAS
+# ============================================================
 
 st.markdown("---")
-st.subheader("📊 Análisis y tendencias")
+st.markdown("## 📊 Análisis y tendencias")
 
 if filtered.empty:
     st.info("No hay datos bajo los filtros actuales para mostrar gráficos.")
@@ -546,10 +551,12 @@ else:
     else:
         st.write("Faltan columnas necesarias para el mapa de calor.")
 
-# ----------------- Favoritas con póster -----------------
+# ============================================================
+#                        FAVORITAS
+# ============================================================
 
 st.markdown("---")
-st.subheader("⭐ Tus favoritas (nota ≥ 9) en este filtro")
+st.markdown("## ⭐ Tus favoritas (nota ≥ 9) en este filtro")
 
 if "Your Rating" in filtered.columns:
     fav = filtered[filtered["Your Rating"] >= 9].copy()
@@ -595,10 +602,12 @@ if "Your Rating" in filtered.columns:
 else:
     st.write("No se encontró la columna 'Your Rating' en el CSV.")
 
-# ----------------- Galería tipo Netflix -----------------
+# ============================================================
+#                       GALERÍA
+# ============================================================
 
 st.markdown("---")
-st.subheader("🎞 Galería de pósters (resultados filtrados)")
+st.markdown("## 🎞 Galería de pósters (resultados filtrados)")
 
 if show_gallery:
     if TMDB_API_KEY is None:
@@ -649,10 +658,12 @@ if show_gallery:
 else:
     st.info("Desactiva la galería desde la barra lateral si no quieres ver esta sección.")
 
-# ----------------- Recomendaciones por ratings globales -----------------
+# ============================================================
+#             RECOMENDACIONES POR RATINGS GLOBALES
+# ============================================================
 
 st.markdown("---")
-st.subheader("🎯 Recomendaciones por ratings globales (IMDb + TMDb)")
+st.markdown("## 🎯 Recomendaciones por ratings globales (IMDb + TMDb)")
 
 col_a2, col_b2 = st.columns(2)
 with col_a2:
@@ -722,10 +733,12 @@ if st.button("Generar recomendaciones globales"):
                         if isinstance(url, str) and url.startswith("http"):
                             st.write(f"[Ver en IMDb]({url})")
 
-# ----------------- ¿Qué ver hoy? -----------------
+# ============================================================
+#                      ¿QUÉ VER HOY?
+# ============================================================
 
 st.markdown("---")
-st.subheader("🎲 ¿Qué ver hoy? (según tu propio gusto)")
+st.markdown("## 🎲 ¿Qué ver hoy? (según tu propio gusto)")
 
 modo = st.selectbox(
     "Modo de recomendación",

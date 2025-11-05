@@ -302,38 +302,293 @@ if "Year" in df.columns:
 else:
     df["YearInt"] = -1
 
-# ----------------- Tema oscuro fijo + CSS -----------------
+# ----------------- Tema oscuro fijo + CSS espectacular -----------------
 
-primary_bg = "#0e1117"
-secondary_bg = "#161b22"
-text_color = "#f9fafb"
-card_bg = "#161b22"
+primary_bg = "#020617"     # slate-950
+secondary_bg = "#020617"
+text_color = "#e5e7eb"     # zinc-200
+card_bg = "rgba(15,23,42,0.9)"  # glass dark
+accent_color = "#eab308"   # amber-500
+accent_soft = "rgba(234,179,8,0.25)"
+accent_alt = "#38bdf8"     # sky-400
 
 st.markdown(
     f"""
     <style>
-    .stApp {{
-        background-color: {primary_bg};
-        color: {text_color};
+    /* Fuentes y variables */
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+    :root {{
+        --bg-primary: {primary_bg};
+        --bg-secondary: {secondary_bg};
+        --text-color: {text_color};
+        --card-bg: {card_bg};
+        --accent: {accent_color};
+        --accent-soft: {accent_soft};
+        --accent-alt: {accent_alt};
+        --radius-lg: 14px;
+        --radius-xl: 18px;
     }}
 
-    .movie-card {{
-        background-color: {card_bg};
-        border-radius: 8px;
-        padding: 12px;
-        margin-bottom: 12px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.4);
+    html, body, .stApp {{
+        background: radial-gradient(circle at top left, #0f172a 0%, #020617 40%, #000000 100%);
+        color: var(--text-color);
+        font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+    }}
+
+    /* Sidebar */
+    [data-testid="stSidebar"] > div:first-child {{
+        background: linear-gradient(180deg, rgba(15,23,42,0.98), rgba(15,23,42,0.90));
+        border-right: 1px solid rgba(148,163,184,0.25);
+        box-shadow: 0 0 30px rgba(0,0,0,0.7);
+    }}
+
+    [data-testid="stSidebar"] * {{
+        color: #e5e7eb !important;
         font-size: 0.9rem;
     }}
 
-    .movie-title {{
+    [data-testid="stSidebar"] .stSlider > div {{
+        color: #e5e7eb !important;
+    }}
+
+    /* Encabezados */
+    h1, h2, h3, h4 {{
+        font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+        letter-spacing: 0.04em;
+    }}
+
+    h1 {{
+        text-transform: uppercase;
+        font-weight: 800;
+        font-size: 1.9rem !important;
+        background: linear-gradient(90deg, var(--accent), var(--accent-alt));
+        -webkit-background-clip: text;
+        color: transparent;
+        margin-bottom: 0.1rem;
+    }}
+
+    h2 {{
         font-weight: 700;
-        margin-bottom: 4px;
+        font-size: 1.4rem !important;
+        margin-top: 1.5rem;
+        margin-bottom: 0.25rem;
+    }}
+
+    h3 {{
+        font-weight: 600;
+    }}
+
+    /* Texto principal y enlaces */
+    .stMarkdown, .stText, .stCaption, p {{
+        color: var(--text-color);
+    }}
+
+    a {{
+        color: var(--accent-alt) !important;
+        text-decoration: none;
+    }}
+    a:hover {{
+        text-decoration: underline;
+    }}
+
+    /* Tarjetas de métricas */
+    [data-testid="stMetric"] {{
+        background: radial-gradient(circle at top left, rgba(15,23,42,0.95), rgba(15,23,42,0.75));
+        padding: 14px 16px;
+        border-radius: 14px;
+        border: 1px solid rgba(148,163,184,0.45);
+        box-shadow: 0 12px 30px rgba(15,23,42,0.7);
+        backdrop-filter: blur(10px);
+    }}
+
+    [data-testid="stMetricLabel"], [data-testid="stMetricDelta"] {{
+        color: #9ca3af !important;
+        font-size: 0.75rem !important;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+    }}
+
+    [data-testid="stMetricValue"] {{
+        color: #e5e7eb !important;
+        font-weight: 700;
+        font-size: 1.4rem !important;
+    }}
+
+    /* Línea separadora */
+    hr {{
+        border-top: 1px solid rgba(148,163,184,0.35);
+    }}
+
+    /* Expander = sección plegable */
+    [data-testid="stExpander"] {{
+        border-radius: var(--radius-xl) !important;
+        border: 1px solid rgba(148,163,184,0.5);
+        background: radial-gradient(circle at top left, rgba(15,23,42,0.98), rgba(15,23,42,0.85));
+        margin-bottom: 1rem;
+        box-shadow: 0 12px 30px rgba(15,23,42,0.7);
+    }}
+
+    [data-testid="stExpander"] > details > summary {{
+        color: #e5e7eb;
+        font-weight: 600;
+    }}
+
+    /* Botones */
+    button[kind="secondary"], button[kind="primary"], .stButton > button {{
+        border-radius: 999px !important;
+        border: 1px solid rgba(250, 204, 21, 0.7) !important;
+        background: radial-gradient(circle at top left, rgba(234,179,8,0.25), rgba(15,23,42,1)) !important;
+        color: #fefce8 !important;
+        font-weight: 600 !important;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        font-size: 0.75rem !important;
+        padding: 0.45rem 1.2rem !important;
+        box-shadow: 0 10px 25px rgba(234,179,8,0.35);
+        transition: all 0.18s ease-out;
+    }}
+
+    .stButton > button:hover {{
+        transform: translateY(-1px) scale(1.02);
+        box-shadow: 0 16px 40px rgba(234,179,8,0.55);
+        border-color: rgba(250, 204, 21, 0.95) !important;
+    }}
+
+    .stButton > button:active {{
+        transform: translateY(0px) scale(0.99);
+        box-shadow: 0 6px 18px rgba(0,0,0,0.7);
+    }}
+
+    /* Inputs (selects, sliders, etc.) */
+    .stTextInput > div > div > input,
+    .stSelectbox > div > div,
+    .stMultiSelect > div > div {{
+        background-color: rgba(15,23,42,0.9) !important;
+        border-radius: 999px !important;
+        border: 1px solid rgba(148,163,184,0.6) !important;
+        color: #e5e7eb !important;
+        font-size: 0.9rem !important;
+    }}
+
+    .stSlider > div > div > div > div {{
+        color: #e5e7eb !important;
+    }}
+
+    /* Radio horizontal */
+    .stRadio > div[role="radiogroup"] > label {{
+        background: rgba(15,23,42,0.9);
+        border-radius: 999px;
+        padding: 0.25rem 0.9rem;
+        border: 1px solid rgba(148,163,184,0.5);
+        margin-right: 0.3rem;
+        font-size: 0.8rem;
+    }}
+
+    .stRadio > div[role="radiogroup"] > label[data-baseweb="radio"]:has(input:checked) {{
+        border-color: var(--accent);
+        background: radial-gradient(circle at top left, rgba(234,179,8,0.35), rgba(15,23,42,1));
+        color: #fefce8;
+    }}
+
+    /* Movie cards (modo tarjetas, favoritas, recos, etc.) */
+    .movie-card {{
+        background: radial-gradient(circle at top left, rgba(15,23,42,0.9), rgba(15,23,42,0.85));
+        border-radius: var(--radius-lg);
+        padding: 14px 14px 12px 14px;
+        margin-bottom: 14px;
+        border: 1px solid rgba(148,163,184,0.45);
+        box-shadow: 0 18px 40px rgba(15,23,42,0.8);
+        backdrop-filter: blur(12px);
+        position: relative;
+        overflow: hidden;
+        transition: all 0.16s ease-out;
+    }}
+
+    .movie-card::before {{
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: radial-gradient(circle at top left, rgba(234,179,8,0.16), transparent 55%);
+        opacity: 0;
+        transition: opacity 0.2s ease-out;
+        pointer-events: none;
+    }}
+
+    .movie-card:hover {{
+        transform: translateY(-3px) translateZ(0) scale(1.01);
+        box-shadow: 0 22px 60px rgba(0,0,0,0.95);
+        border-color: rgba(234,179,8,0.7);
+    }}
+
+    .movie-card:hover::before {{
+        opacity: 1;
+    }}
+
+    .movie-title {{
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        font-size: 0.86rem;
+        margin-bottom: 2px;
+        color: #f9fafb;
     }}
 
     .movie-sub {{
-        font-size: 0.8rem;
-        line-height: 1.3;
+        font-size: 0.78rem;
+        line-height: 1.35;
+        color: #cbd5f5;
+    }}
+
+    /* Dataframe / tablas */
+    .stDataFrame, .stTable {{
+        border-radius: var(--radius-lg);
+        overflow: hidden;
+        border: 1px solid rgba(148,163,184,0.45);
+        box-shadow: 0 16px 38px rgba(15,23,42,0.85);
+    }}
+
+    .stDataFrame table {{
+        background-color: rgba(15,23,42,0.9) !important;
+        color: #e5e7eb !important;
+        font-size: 0.82rem;
+    }}
+
+    .stDataFrame table thead tr th {{
+        background: radial-gradient(circle at top, rgba(15,23,42,0.9), rgba(15,23,42,0.8)) !important;
+        color: #e5e7eb !important;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        font-size: 0.7rem;
+    }}
+
+    .stDataFrame tbody tr:nth-child(even) {{
+        background-color: rgba(15,23,42,0.7) !important;
+    }}
+
+    .stDataFrame tbody tr:hover {{
+        background-color: rgba(55,65,81,0.7) !important;
+    }}
+
+    /* Scrollbar */
+    ::-webkit-scrollbar {{
+        width: 8px;
+        height: 8px;
+    }}
+    ::-webkit-scrollbar-track {{
+        background: rgba(15,23,42,0.9);
+    }}
+    ::-webkit-scrollbar-thumb {{
+        background: linear-gradient(180deg, var(--accent-alt), var(--accent));
+        border-radius: 999px;
+    }}
+
+    /* Caption (filtros activos) */
+    .stCaption, .stMarkdown p small {{
+        color: #9ca3af !important;
+        font-size: 0.72rem !important;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
     }}
     </style>
     """,

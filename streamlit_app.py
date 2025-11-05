@@ -135,59 +135,6 @@ def normalize_title(s: str) -> str:
     return re.sub(r"[^a-z0-9]+", "", str(s).lower())
 
 
-# ============================================================
-#                   VISTA FESTIVAL (temporada de premios)
-# ============================================================
-st.markdown("---")
-st.markdown("## 🏆 Vista Festival — Temporada de premios cinematográficos")
-
-with st.expander("Ver películas según nominaciones/ganadores de premios", expanded=False):
-    # Ejemplo de lista simplificada (puedes ampliarla)
-    FESTIVAL_LIST = [
-        {"Award": "Academy Awards", "Year": 2024, "Title": "Everything Everywhere All At Once"},
-        {"Award": "Academy Awards", "Year": 2023, "Title": "Top Gun: Maverick"},
-        {"Award": "Golden Globe Awards", "Year": 2023, "Title": "Elvis"},
-        {"Award": "BAFTA Film Awards", "Year": 2023, "Title": "All Quiet on the Western Front"},
-        # … añade más
-    ]
-    fest_df = pd.DataFrame(FESTIVAL_LIST)
-    fest_df["NormTitle"] = fest_df["Title"].apply(normalize_title)
-    fest_df["YearInt"] = fest_df["Year"]
-    fest_df["Seen"] = False
-    fest_df["Your Rating"] = None
-    fest_df["IMDb Rating"] = None
-    fest_df["URL"] = None
-
-    for idx, row in fest_df.iterrows():
-        match = df[(df["NormTitle"] == row["NormTitle"]) &
-                   (df["YearInt"] == row["YearInt"])]
-        if not match.empty:
-            first = match.iloc[0]
-            fest_df.at[idx, "Seen"] = True
-            fest_df.at[idx, "Your Rating"] = first.get("Your Rating")
-            fest_df.at[idx, "IMDb Rating"] = first.get("IMDb Rating")
-            fest_df.at[idx, "URL"] = first.get("URL")
-
-    total_fest = len(fest_df)
-    seen_fest = int(fest_df["Seen"].sum())
-    pct_fest = (seen_fest / total_fest) if total_fest > 0 else 0.0
-
-    col_f1, col_f2 = st.columns(2)
-    with col_f1:
-        st.metric("Películas vistas del listado festival", f"{seen_fest}/{total_fest}")
-    with col_f2:
-        st.metric("Progreso temporada premios", f"{pct_fest * 100:.1f}%")
-    st.progress(pct_fest)
-
-    fest_table = fest_df.copy()
-    fest_table["Vista"] = fest_table["Seen"].map({True: "✅", False: "—"})
-    fest_table_display = fest_table[[
-        "Award", "Year", "Title", "Vista", "Your Rating", "IMDb Rating", "URL"
-    ]]
-    fest_table_display["Year"] = fest_table_display["Year"].astype(str)
-    st.dataframe(fest_table_display, hide_index=True, use_container_width=True)
-
-
 # ----------------- Funciones auxiliares -----------------
 
 
@@ -317,6 +264,43 @@ def get_tmdb_vote_average(title, year=None):
             return None
 
         return results[0].get("vote_average")
+    except Exception:
+        return None
+
+
+@st.cache_data
+def get_streaming_availability(title, year=None, country="US"):
+    """
+    Devuelve lista de plataformas de streaming para un título.
+    Necesita STREAMING_API_KEY en st.secrets.
+    La implementación es genérica: deberás adaptarla al proveedor que uses.
+    """
+    API_KEY = st.secrets.get("STREAMING_API_KEY", None)
+    if API_KEY is None:
+        return None
+
+    try:
+        # EJEMPLO genérico: deberás adaptar endpoint y parsing real
+        params = {
+            "apiKey": API_KEY,
+            "search_field": "title",
+            "search_value": title,
+            "country": country,
+        }
+        r = requests.get("https://api.watchmode.com/v1/search/", params=params, timeout=4)
+        if r.status_code != 200:
+            return None
+        data = r.json()
+        # Esta parte es completamente dependiente de la API concreta.
+        # Lo dejamos como ejemplo: retornar lista de nombres de plataforma si existiera.
+        platforms = set()
+        for item in data.get("titles", []):
+            if item.get("title", "").lower() == str(title).lower():
+                for src in item.get("sources", []):
+                    name = src.get("name")
+                    if name:
+                        platforms.add(name)
+        return sorted(list(platforms)) if platforms else None
     except Exception:
         return None
 
@@ -500,7 +484,7 @@ st.markdown(
         border-top: 1px solid rgba(148,163,184,0.35);
     }}
 
-    /* Expander = sección plegable */
+    /* Expander */
     [data-testid="stExpander"] {{
         border-radius: var(--radius-xl) !important;
         border: 1px solid rgba(148,163,184,0.5);
@@ -540,7 +524,7 @@ st.markdown(
         box-shadow: 0 6px 18px rgba(0,0,0,0.7);
     }}
 
-    /* Inputs (selects, sliders, etc.) */
+    /* Inputs */
     .stTextInput > div > div > input,
     .stSelectbox > div > div,
     .stMultiSelect > div > div {{
@@ -571,7 +555,7 @@ st.markdown(
         color: #fefce8;
     }}
 
-    /* Movie cards (modo tarjetas, etc.) */
+    /* Movie cards */
     .movie-card {{
         background: radial-gradient(circle at top left, rgba(15,23,42,0.9), rgba(15,23,42,0.85));
         border-radius: var(--radius-lg);
@@ -765,7 +749,7 @@ if selected_genres:
 if selected_directors:
     filtered = filtered[filtered["Directors"].isin(selected_directors)]
 
-# Pequeño resumen de filtros activos
+# Resumen filtros activos
 st.caption(
     f"Filtros activos → Años: {year_range[0]}–{year_range[1]} | "
     f"Your Rating: {rating_range[0]}–{rating_range[1]} | "
@@ -917,7 +901,6 @@ else:
             directors = row.get("Directors", "")
             url = row.get("URL", "")
 
-            # Color según nota (prioriza tu nota, si no IMDb)
             base_rating = your_rating if your_rating is not None and not pd.isna(your_rating) else imdb_rating
             border_color, glow_color = get_rating_colors(base_rating)
 
@@ -1394,6 +1377,204 @@ with st.expander("Ver progreso en la lista AFI 100", expanded=True):
         hide_index=True,
         use_container_width=True
     )
+
+# ============================================================
+#                   VISTA FESTIVAL (Premios)
+# ============================================================
+
+st.markdown("---")
+st.markdown("## 🏆 Vista Festival — Temporada de premios")
+
+with st.expander("Ver progreso en premios (Oscars, Globos de Oro, BAFTA, etc.)", expanded=False):
+
+    FESTIVAL_LIST = [
+        # Ejemplos. Amplía esta lista a tu gusto.
+        {"Award": "Academy Awards (Oscars)", "Category": "Best Picture", "Year": 2024, "Title": "Oppenheimer"},
+        {"Award": "Academy Awards (Oscars)", "Category": "Best Picture", "Year": 2023, "Title": "Everything Everywhere All at Once"},
+        {"Award": "Golden Globe Awards", "Category": "Best Motion Picture – Drama", "Year": 2023, "Title": "The Fabelmans"},
+        {"Award": "Golden Globe Awards", "Category": "Best Motion Picture – Musical or Comedy", "Year": 2023, "Title": "The Banshees of Inisherin"},
+        {"Award": "BAFTA Film Awards", "Category": "Best Film", "Year": 2023, "Title": "All Quiet on the Western Front"},
+        {"Award": "Critics Choice Awards", "Category": "Best Picture", "Year": 2023, "Title": "Everything Everywhere All at Once"},
+        {"Award": "Independent Spirit Awards", "Category": "Best Feature", "Year": 2023, "Title": "Everything Everywhere All at Once"},
+        {"Award": "Cannes – Palme d’Or", "Category": "Palme d'Or", "Year": 2023, "Title": "Anatomy of a Fall"},
+        {"Award": "Cannes – Palme d’Or", "Category": "Palme d'Or", "Year": 2019, "Title": "Parasite"},
+        # Puedes añadir Emmys, DGA, PGA, etc., aunque muchos son TV.
+    ]
+
+    fest_df = pd.DataFrame(FESTIVAL_LIST)
+    fest_df["NormTitle"] = fest_df["Title"].apply(normalize_title)
+    fest_df["YearInt"] = fest_df["Year"]
+
+    fest_df["Seen"] = False
+    fest_df["Your Rating"] = None
+    fest_df["IMDb Rating"] = None
+    fest_df["URL"] = None
+
+    for idx, row in fest_df.iterrows():
+        candidates = df[
+            (df["NormTitle"] == row["NormTitle"]) &
+            (df["YearInt"] == row["YearInt"])
+        ]
+        if not candidates.empty:
+            first = candidates.iloc[0]
+            fest_df.at[idx, "Seen"] = True
+            fest_df.at[idx, "Your Rating"] = first.get("Your Rating")
+            fest_df.at[idx, "IMDb Rating"] = first.get("IMDb Rating")
+            fest_df.at[idx, "URL"] = first.get("URL")
+
+    total_fest = len(fest_df)
+    seen_fest = int(fest_df["Seen"].sum())
+    pct_fest = (seen_fest / total_fest) if total_fest > 0 else 0.0
+
+    col_f1, col_f2 = st.columns(2)
+    with col_f1:
+        st.metric("Películas vistas del listado festival", f"{seen_fest}/{total_fest}")
+    with col_f2:
+        st.metric("Progreso temporada premios", f"{pct_fest * 100:.1f}%")
+    st.progress(pct_fest)
+
+    fest_df["Vista"] = fest_df["Seen"].map({True: "✅", False: "—"})
+    fest_display = fest_df[[
+        "Award", "Category", "Year", "Title", "Vista", "Your Rating", "IMDb Rating", "URL"
+    ]].copy()
+    fest_display["Year"] = fest_display["Year"].astype(str)
+    fest_display["Your Rating"] = fest_display["Your Rating"].apply(fmt_rating)
+    fest_display["IMDb Rating"] = fest_display["IMDb Rating"].apply(fmt_rating)
+
+    st.markdown("### Detalle de títulos de la temporada de premios (sobre tu catálogo)")
+
+    st.dataframe(
+        fest_display,
+        hide_index=True,
+        use_container_width=True
+    )
+
+# ============================================================
+#                  DÓNDE VERLAS (PLATAFORMAS)
+# ============================================================
+
+st.markdown("---")
+st.markdown("## 🌐 Dónde ver las películas (plataformas de streaming)")
+
+with st.expander("Consultar plataformas de streaming para tus resultados filtrados", expanded=False):
+    if filtered.empty:
+        st.info("No hay resultados bajo los filtros actuales.")
+    else:
+        streaming_key = st.secrets.get("STREAMING_API_KEY", None)
+        if streaming_key is None:
+            st.warning(
+                "No hay STREAMING_API_KEY configurada en Secrets.\n\n"
+                "Configura una API de disponibilidad de streaming para usar esta sección."
+            )
+        else:
+            st.write(
+                "Consulta aproximada de plataformas para algunas de las películas filtradas "
+                "(para evitar abusar de la API, se limita a unas cuantas)."
+            )
+            max_items = st.slider(
+                "Número máximo de películas a consultar",
+                min_value=5, max_value=30, value=10, step=1
+            )
+
+            subset = filtered.head(max_items)
+
+            for _, row in subset.iterrows():
+                titulo = row.get("Title", "Sin título")
+                year = row.get("Year", None)
+                your_rating = row.get("Your Rating", None)
+                imdb_rating = row.get("IMDb Rating", None)
+                url = row.get("URL", "")
+
+                base_rating = your_rating if pd.notna(your_rating) else imdb_rating
+                border_color, glow_color = get_rating_colors(base_rating)
+
+                platforms = get_streaming_availability(titulo, year)
+                platforms_str = ", ".join(platforms) if platforms else "Sin datos (o no disponible)"
+
+                st.markdown(
+                    f"""
+                    <div class="movie-card" style="
+                        border-color: {border_color};
+                        box-shadow:
+                            0 0 0 1px rgba(15,23,42,0.9),
+                            0 0 22px {glow_color};
+                        margin-bottom: 10px;
+                    ">
+                      <div class="movie-title">
+                        {titulo}{f" ({int(year)})" if pd.notna(year) else ""}
+                      </div>
+                      <div class="movie-sub">
+                        {f"⭐ Tu nota: {fmt_rating(your_rating)}<br>" if pd.notna(your_rating) else ""}
+                        {f"IMDb: {fmt_rating(imdb_rating)}<br>" if pd.notna(imdb_rating) else ""}
+                        <b>Plataformas:</b> {platforms_str}<br>
+                        {f'<a href="{url}" target="_blank">Ver en IMDb</a>' if isinstance(url, str) and url.startswith("http") else ""}
+                      </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
+# ============================================================
+#               DESCUBRIR INFRAVALORADAS
+# ============================================================
+
+st.markdown("---")
+st.markdown("## 🔍 Descubrir películas infravaloradas")
+
+with st.expander("Películas que tú puntúas muy alto y IMDb no tanto", expanded=False):
+    if "Your Rating" in df.columns and "IMDb Rating" in df.columns:
+        diff_df = df[df["Your Rating"].notna() & df["IMDb Rating"].notna()].copy()
+        if diff_df.empty:
+            st.write("No hay suficientes películas con ambas notas (tuya e IMDb) para este análisis.")
+        else:
+            diff_df["Diff"] = diff_df["Your Rating"] - diff_df["IMDb Rating"]
+            # Criterio: Tu nota >= 8 y diferencia >= 1.0
+            infraval = diff_df[(diff_df["Your Rating"] >= 8) & (diff_df["Diff"] >= 1.0)]
+            infraval = infraval.sort_values("Diff", ascending=False).head(30)
+
+            if infraval.empty:
+                st.write("No se detectaron películas claramente infravaloradas con los criterios actuales.")
+            else:
+                st.write(
+                    "Mostrando películas donde tu nota supera al menos en 1 punto a la de IMDb "
+                    "(y tu nota es ≥ 8)."
+                )
+                for _, row in infraval.iterrows():
+                    titulo = row.get("Title", "Sin título")
+                    year = row.get("Year", "")
+                    your_rating = row.get("Your Rating")
+                    imdb_rating = row.get("IMDb Rating")
+                    genres = row.get("Genres", "")
+                    url = row.get("URL", "")
+
+                    diff_val = float(your_rating) - float(imdb_rating)
+                    border_color, glow_color = get_rating_colors(your_rating)
+
+                    st.markdown(
+                        f"""
+                        <div class="movie-card" style="
+                            border-color: {border_color};
+                            box-shadow:
+                                0 0 0 1px rgba(15,23,42,0.9),
+                                0 0 26px {glow_color};
+                            margin-bottom: 12px;
+                        ">
+                          <div class="movie-title">
+                            {titulo}{f" ({int(year)})" if pd.notna(year) else ""}
+                          </div>
+                          <div class="movie-sub">
+                            ⭐ Tu nota: {float(your_rating):.1f}<br>
+                            IMDb: {float(imdb_rating):.1f}<br>
+                            Diferencia (Tu − IMDb): {diff_val:.1f}<br>
+                            {("<b>Géneros:</b> " + genres + "<br>") if isinstance(genres, str) and genres else ""}
+                            {f'<a href="{url}" target="_blank">Ver en IMDb</a>' if isinstance(url, str) and url.startswith("http") else ""}
+                          </div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+    else:
+        st.write("Faltan columnas 'Your Rating' o 'IMDb Rating' para este análisis.")
 
 # ============================================================
 #                        FAVORITAS

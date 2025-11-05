@@ -268,6 +268,33 @@ def get_tmdb_vote_average(title, year=None):
         return None
 
 
+def get_rating_colors(rating):
+    """
+    Devuelve (border_color, glow_color) según la nota.
+    Usa tu nota si está, si no, IMDb.
+    """
+    try:
+        r = float(rating)
+    except Exception:
+        return ("rgba(148,163,184,0.8)", "rgba(15,23,42,0.0)")
+
+    if r >= 9:
+        # Verde neón
+        return ("#22c55e", "rgba(34,197,94,0.55)")
+    elif r >= 8:
+        # Azul cielo
+        return ("#0ea5e9", "rgba(14,165,233,0.55)")
+    elif r >= 7:
+        # Violeta
+        return ("#a855f7", "rgba(168,85,247,0.50)")
+    elif r >= 6:
+        # Ámbar
+        return ("#eab308", "rgba(234,179,8,0.45)")
+    else:
+        # Naranja/rojo suave
+        return ("#f97316", "rgba(249,115,22,0.45)")
+
+
 # ----------------- Carga de datos -----------------
 
 st.sidebar.header("📂 Datos")
@@ -491,7 +518,7 @@ st.markdown(
         color: #fefce8;
     }}
 
-    /* Movie cards (modo tarjetas, favoritas, recos, etc.) */
+    /* Movie cards (modo tarjetas, etc.) */
     .movie-card {{
         background: radial-gradient(circle at top left, rgba(15,23,42,0.9), rgba(15,23,42,0.85));
         border-radius: var(--radius-lg);
@@ -518,7 +545,6 @@ st.markdown(
     .movie-card:hover {{
         transform: translateY(-3px) translateZ(0) scale(1.01);
         box-shadow: 0 22px 60px rgba(0,0,0,0.95);
-        border-color: rgba(234,179,8,0.7);
     }}
 
     .movie-card:hover::before {{
@@ -838,11 +864,20 @@ else:
             directors = row.get("Directors", "")
             url = row.get("URL", "")
 
+            # Color según nota (prioriza tu nota, si no IMDb)
+            base_rating = your_rating if your_rating is not None and not pd.isna(your_rating) else imdb_rating
+            border_color, glow_color = get_rating_colors(base_rating)
+
             your_str = fmt_rating(your_rating) if your_rating is not None else ""
             imdb_str = fmt_rating(imdb_rating) if imdb_rating is not None else ""
 
             card_html = f"""
-            <div class="movie-card">
+            <div class="movie-card" style="
+                border-color: {border_color};
+                box-shadow:
+                    0 0 0 1px rgba(15,23,42,0.9),
+                    0 0 22px {glow_color};
+            ">
               <div class="movie-title">{titulo}{f" ({year_str})" if year_str else ""}</div>
               <div class="movie-sub">
                 {("⭐ Tu nota: " + your_str + "<br>") if your_str else ""}
@@ -1330,13 +1365,28 @@ with st.expander("Ver favoritas", expanded=False):
                 directors = row.get("Directors", "")
                 url = row.get("URL", "")
 
+                border_color, glow_color = get_rating_colors(nota)
+
                 etiqueta = f"{titulo}"
                 if pd.notna(nota):
                     etiqueta = f"{int(nota)}/10 — {titulo}"
                 if pd.notna(year):
                     etiqueta += f" ({int(year)})"
 
-                st.markdown(f"### {etiqueta}")
+                st.markdown(
+                    f"""
+                    <div class="movie-card" style="
+                        border-color: {border_color};
+                        box-shadow:
+                            0 0 0 1px rgba(15,23,42,0.9),
+                            0 0 24px {glow_color};
+                        margin-bottom: 22px;
+                    ">
+                      <div class="movie-title">{etiqueta}</div>
+                      <div class="movie-sub">
+                    """,
+                    unsafe_allow_html=True,
+                )
 
                 col_img, col_info = st.columns([1, 3])
 
@@ -1360,7 +1410,10 @@ with st.expander("Ver favoritas", expanded=False):
                     if isinstance(url, str) and url.startswith("http"):
                         st.write(f"[Ver en IMDb]({url})")
 
-                st.markdown("---")
+                st.markdown(
+                    "</div></div>",
+                    unsafe_allow_html=True,
+                )
         else:
             st.write("No hay películas con nota ≥ 9 bajo estos filtros.")
     else:
@@ -1403,23 +1456,38 @@ with st.expander("Ver galería de pósters", expanded=False):
                     imdb_rating = row.get("IMDb Rating", "")
                     url = row.get("URL", "")
 
+                    base_rating = nota if pd.notna(nota) else imdb_rating
+                    border_color, glow_color = get_rating_colors(base_rating)
+
                     poster_url = get_poster_url(titulo, year)
                     if isinstance(poster_url, str) and poster_url:
                         st.image(poster_url)
                     else:
                         st.write("Sin póster")
 
-                    if pd.notna(year):
-                        st.markdown(f"**{titulo}** ({int(year)})")
-                    else:
-                        st.markdown(f"**{titulo}**")
+                    year_str = f" ({int(year)})" if pd.notna(year) else ""
+                    nota_str = f"⭐ Tu nota: {fmt_rating(nota)}" if pd.notna(nota) else ""
+                    imdb_str = f"IMDb: {fmt_rating(imdb_rating)}" if pd.notna(imdb_rating) else ""
+                    imdb_link = f"[IMDb]({url})" if isinstance(url, str) and url.startswith("http") else ""
 
-                    if pd.notna(nota):
-                        st.write(f"⭐ Tu nota: {fmt_rating(nota)}")
-                    if pd.notna(imdb_rating):
-                        st.write(f"IMDb: {fmt_rating(imdb_rating)}")
-                    if isinstance(url, str) and url.startswith("http"):
-                        st.write(f"[IMDb]({url})")
+                    info_html = f"""
+                    <div class="movie-card" style="
+                        border-color: {border_color};
+                        box-shadow:
+                            0 0 0 1px rgba(15,23,42,0.9),
+                            0 0 20px {glow_color};
+                        padding: 10px 10px 8px 10px;
+                        margin-top: 8px;
+                    ">
+                      <div class="movie-title">{titulo}{year_str}</div>
+                      <div class="movie-sub">
+                        {nota_str}<br>
+                        {imdb_str}<br>
+                        {imdb_link}
+                      </div>
+                    </div>
+                    """
+                    st.markdown(info_html, unsafe_allow_html=True)
     else:
         st.info("La galería está desactivada en las opciones de visualización.")
 
@@ -1476,6 +1544,9 @@ with st.expander("Ver recomendaciones por ratings globales", expanded=False):
                         genres = row.get("Genres", "")
                         url = row.get("URL", "")
 
+                        base_rating = your_rating if pd.notna(your_rating) else imdb_rating
+                        border_color, glow_color = get_rating_colors(base_rating)
+
                         col_img, col_info = st.columns([1, 3])
                         with col_img:
                             poster_url = get_poster_url(titulo, year)
@@ -1485,20 +1556,29 @@ with st.expander("Ver recomendaciones por ratings globales", expanded=False):
                                 st.write("Sin póster")
 
                         with col_info:
-                            if pd.notna(year):
-                                st.markdown(f"**{titulo}** ({int(year)})")
-                            else:
-                                st.markdown(f"**{titulo}**")
-
-                            if pd.notna(your_rating):
-                                st.write(f"⭐ Tu nota: {fmt_rating(your_rating)}")
-                            if pd.notna(imdb_rating):
-                                st.write(f"IMDb: {fmt_rating(imdb_rating)}")
-                            st.write(f"TMDb: {fmt_rating(tmdb_rating)}")
-                            if isinstance(genres, str) and genres:
-                                st.write(f"**Géneros:** {genres}")
-                            if isinstance(url, str) and url.startswith("http"):
-                                st.write(f"[Ver en IMDb]({url})")
+                            st.markdown(
+                                f"""
+                                <div class="movie-card" style="
+                                    border-color: {border_color};
+                                    box-shadow:
+                                        0 0 0 1px rgba(15,23,42,0.9),
+                                        0 0 22px {glow_color};
+                                    margin-bottom: 16px;
+                                ">
+                                  <div class="movie-title">
+                                    {titulo}{f" ({int(year)})" if pd.notna(year) else ""}
+                                  </div>
+                                  <div class="movie-sub">
+                                    {f"⭐ Tu nota: {fmt_rating(your_rating)}<br>" if pd.notna(your_rating) else ""}
+                                    {f"IMDb: {fmt_rating(imdb_rating)}<br>" if pd.notna(imdb_rating) else ""}
+                                    TMDb: {fmt_rating(tmdb_rating)}<br>
+                                    {f"<b>Géneros:</b> {genres}<br>" if isinstance(genres, str) and genres else ""}
+                                    {f'<a href="{url}" target="_blank">Ver en IMDb</a>' if isinstance(url, str) and url.startswith("http") else ""}
+                                  </div>
+                                </div>
+                                """,
+                                unsafe_allow_html=True,
+                            )
 
 # ============================================================
 #                      ¿QUÉ VER HOY?
@@ -1557,6 +1637,9 @@ with st.expander("Ver recomendación aleatoria según tu gusto", expanded=True):
             directors = peli.get("Directors", "")
             url = peli.get("URL", "")
 
+            base_rating = nota if pd.notna(nota) else imdb_rating
+            border_color, glow_color = get_rating_colors(base_rating)
+
             col_img, col_info = st.columns([1, 3])
 
             with col_img:
@@ -1567,16 +1650,26 @@ with st.expander("Ver recomendación aleatoria según tu gusto", expanded=True):
                     st.write("Sin póster")
 
             with col_info:
-                if pd.notna(year):
-                    st.markdown(f"## {titulo} ({int(year)})")
-                else:
-                    st.markdown(f"## {titulo}")
-
-                if pd.notna(nota):
-                    st.write(f"⭐ Tu nota: {fmt_rating(nota)}")
-                if pd.notna(imdb_rating):
-                    st.write(f"IMDb: {fmt_rating(imdb_rating)}")
-                st.write(f"**Géneros:** {genres}")
-                st.write(f"**Director(es):** {directors}")
-                if isinstance(url, str) and url.startswith("http"):
-                    st.write(f"[Ver en IMDb]({url})")
+                st.markdown(
+                    f"""
+                    <div class="movie-card" style="
+                        border-color: {border_color};
+                        box-shadow:
+                            0 0 0 1px rgba(15,23,42,0.9),
+                            0 0 26px {glow_color};
+                        margin-bottom: 10px;
+                    ">
+                      <div class="movie-title">
+                        {titulo}{f" ({int(year)})" if pd.notna(year) else ""}
+                      </div>
+                      <div class="movie-sub">
+                        {f"⭐ Tu nota: {fmt_rating(nota)}<br>" if pd.notna(nota) else ""}
+                        {f"IMDb: {fmt_rating(imdb_rating)}<br>" if pd.notna(imdb_rating) else ""}
+                        <b>Géneros:</b> {genres}<br>
+                        <b>Director(es):</b> {directors}<br>
+                        {f'<a href="{url}" target="_blank">Ver en IMDb</a>' if isinstance(url, str) and url.startswith("http") else ""}
+                      </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )

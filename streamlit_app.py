@@ -3,9 +3,6 @@ import pandas as pd
 import requests
 import random
 import altair as alt
-import matplotlib.pyplot as plt
-from matplotlib.backends.backend_pdf import PdfPages
-import io
 
 # ----------------- Configuración general -----------------
 
@@ -148,53 +145,6 @@ def get_tmdb_vote_average(title, year=None):
         return results[0].get("vote_average")
     except Exception:
         return None
-
-
-def create_pdf_report(df_for_pdf: pd.DataFrame) -> bytes:
-    """Crea un PDF con algunos gráficos básicos de reportería."""
-    buf = io.BytesIO()
-    with PdfPages(buf) as pdf:
-        # Películas por año
-        d = df_for_pdf[df_for_pdf["Year"].notna()]
-        if not d.empty:
-            fig, ax = plt.subplots()
-            by_year = d.groupby("Year").size()
-            by_year.sort_index().plot(kind="line", ax=ax)
-            ax.set_title("Películas por año")
-            ax.set_xlabel("Año")
-            ax.set_ylabel("Número de películas")
-            pdf.savefig(fig)
-            plt.close(fig)
-
-        # Histograma de tu nota
-        if "Your Rating" in df_for_pdf.columns and df_for_pdf["Your Rating"].notna().any():
-            fig, ax = plt.subplots()
-            df_for_pdf["Your Rating"].dropna().plot(
-                kind="hist", bins=10, ax=ax
-            )
-            ax.set_title("Distribución de tu nota (Your Rating)")
-            ax.set_xlabel("Nota")
-            ax.set_ylabel("Frecuencia")
-            pdf.savefig(fig)
-            plt.close(fig)
-
-        # Comparación tu nota vs IMDb
-        if (
-            "Your Rating" in df_for_pdf.columns
-            and "IMDb Rating" in df_for_pdf.columns
-        ):
-            corr_df = df_for_pdf[["Your Rating", "IMDb Rating"]].dropna()
-            if not corr_df.empty:
-                fig, ax = plt.subplots()
-                ax.scatter(corr_df["IMDb Rating"], corr_df["Your Rating"], alpha=0.6)
-                ax.set_xlabel("IMDb Rating")
-                ax.set_ylabel("Your Rating")
-                ax.set_title("Dispersión: tu nota vs IMDb")
-                pdf.savefig(fig)
-                plt.close(fig)
-
-    buf.seek(0)
-    return buf
 
 
 # ----------------- Carga de datos -----------------
@@ -355,7 +305,8 @@ if order_by in filtered.columns:
 st.subheader("📚 Resultados")
 
 cols_to_show = [
-    c for c in ["Title", "Year", "Your Rating", "IMDb Rating", "Genres", "Directors", "Date Rated", "URL"]
+    c for c in ["Title", "Year", "Your Rating", "IMDb Rating",
+                "Genres", "Directors", "Date Rated", "URL"]
     if c in filtered.columns
 ]
 
@@ -558,20 +509,6 @@ else:
             st.write("No hay datos suficientes (año + tu nota) para el mapa de calor.")
     else:
         st.write("Faltan columnas necesarias para el mapa de calor.")
-
-    # ----------------- Exportar reporte -----------------
-    st.markdown("### 📄 Exportar reporte en PDF")
-
-    if filtered.empty:
-        st.info("No hay datos para generar un reporte PDF con los filtros actuales.")
-    else:
-        pdf_bytes = create_pdf_report(filtered)
-        st.download_button(
-            "Descargar reporte PDF",
-            data=pdf_bytes,
-            file_name="reporte_peliculas.pdf",
-            mime="application/pdf",
-        )
 
 # ----------------- Favoritas con póster -----------------
 

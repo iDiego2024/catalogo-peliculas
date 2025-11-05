@@ -135,6 +135,59 @@ def normalize_title(s: str) -> str:
     return re.sub(r"[^a-z0-9]+", "", str(s).lower())
 
 
+# ============================================================
+#                   VISTA FESTIVAL (temporada de premios)
+# ============================================================
+st.markdown("---")
+st.markdown("## 🏆 Vista Festival — Temporada de premios cinematográficos")
+
+with st.expander("Ver películas según nominaciones/ganadores de premios", expanded=False):
+    # Ejemplo de lista simplificada (puedes ampliarla)
+    FESTIVAL_LIST = [
+        {"Award": "Academy Awards", "Year": 2024, "Title": "Everything Everywhere All At Once"},
+        {"Award": "Academy Awards", "Year": 2023, "Title": "Top Gun: Maverick"},
+        {"Award": "Golden Globe Awards", "Year": 2023, "Title": "Elvis"},
+        {"Award": "BAFTA Film Awards", "Year": 2023, "Title": "All Quiet on the Western Front"},
+        # … añade más
+    ]
+    fest_df = pd.DataFrame(FESTIVAL_LIST)
+    fest_df["NormTitle"] = fest_df["Title"].apply(normalize_title)
+    fest_df["YearInt"] = fest_df["Year"]
+    fest_df["Seen"] = False
+    fest_df["Your Rating"] = None
+    fest_df["IMDb Rating"] = None
+    fest_df["URL"] = None
+
+    for idx, row in fest_df.iterrows():
+        match = df[(df["NormTitle"] == row["NormTitle"]) &
+                   (df["YearInt"] == row["YearInt"])]
+        if not match.empty:
+            first = match.iloc[0]
+            fest_df.at[idx, "Seen"] = True
+            fest_df.at[idx, "Your Rating"] = first.get("Your Rating")
+            fest_df.at[idx, "IMDb Rating"] = first.get("IMDb Rating")
+            fest_df.at[idx, "URL"] = first.get("URL")
+
+    total_fest = len(fest_df)
+    seen_fest = int(fest_df["Seen"].sum())
+    pct_fest = (seen_fest / total_fest) if total_fest > 0 else 0.0
+
+    col_f1, col_f2 = st.columns(2)
+    with col_f1:
+        st.metric("Películas vistas del listado festival", f"{seen_fest}/{total_fest}")
+    with col_f2:
+        st.metric("Progreso temporada premios", f"{pct_fest * 100:.1f}%")
+    st.progress(pct_fest)
+
+    fest_table = fest_df.copy()
+    fest_table["Vista"] = fest_table["Seen"].map({True: "✅", False: "—"})
+    fest_table_display = fest_table[[
+        "Award", "Year", "Title", "Vista", "Your Rating", "IMDb Rating", "URL"
+    ]]
+    fest_table_display["Year"] = fest_table_display["Year"].astype(str)
+    st.dataframe(fest_table_display, hide_index=True, use_container_width=True)
+
+
 # ----------------- Funciones auxiliares -----------------
 
 

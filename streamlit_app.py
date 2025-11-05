@@ -283,7 +283,7 @@ with col2:
     if "Your Rating" in filtered.columns and filtered["Your Rating"].notna().any():
         st.metric(
             "Promedio de tu nota",
-            f"{filtered['Your Rating"].mean():.2f}"
+            f"{filtered['Your Rating'].mean():.2f}"
         )
     else:
         st.metric("Promedio de tu nota", "N/A")
@@ -292,7 +292,7 @@ with col3:
     if "IMDb Rating" in filtered.columns and filtered["IMDb Rating"].notna().any():
         st.metric(
             "Promedio IMDb",
-            f"{filtered['IMDb Rating"].mean():.2f}"
+            f"{filtered['IMDb Rating'].mean():.2f}"
         )
     else:
         st.metric("Promedio IMDb", "N/A")
@@ -393,6 +393,7 @@ if "Your Rating" in filtered.columns:
 else:
     st.write("No se encontró la columna 'Your Rating' en el CSV.")
 
+
 # ----------------- Galería tipo Netflix -----------------
 
 st.markdown("---")
@@ -448,6 +449,7 @@ if show_gallery:
                     st.write(f"[IMDb]({url})")
 else:
     st.info("Activa 'Mostrar galería de pósters para resultados filtrados' en la barra lateral para ver la vista tipo Netflix.")
+
 
 # ----------------- Recomendaciones por ratings globales -----------------
 
@@ -522,6 +524,7 @@ if st.button("Generar recomendaciones globales"):
                         if isinstance(url, str) and url.startswith("http"):
                             st.write(f"[Ver en IMDb]({url})")
 
+
 # ----------------- ¿Qué ver hoy? -----------------
 
 st.markdown("---")
@@ -588,7 +591,7 @@ if st.button("Recomendar una película"):
             if pd.notna(year):
                 st.markdown(f"## {titulo} ({int(year)})")
             else:
-                st.markdown(f"## {titulo}")
+                st.markdown("## {titulo}")
 
             if pd.notna(nota):
                 st.write(f"⭐ Tu nota: {nota}")

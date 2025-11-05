@@ -312,8 +312,9 @@ if "Your Rating" in filtered.columns:
                 with col_img:
                     if show_posters:
                         poster_url = get_poster_url(titulo, year)
-                        if poster_url:
-                            st.image(poster_url, use_container_width=True)
+                        if isinstance(poster_url, str) and poster_url:
+                        # Usamos la forma más compatible de st.image
+                            st.image(poster_url)
                         else:
                             st.write("Sin póster")
                     else:

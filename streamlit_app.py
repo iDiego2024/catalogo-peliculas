@@ -129,6 +129,7 @@ AFI_LIST = [
     {"Rank": 100, "Title": "Ben-Hur", "Year": 1959},
 ]
 
+
 def normalize_title(s: str) -> str:
     """Normaliza un título para compararlo (minúsculas, sin espacios ni signos)."""
     return re.sub(r"[^a-z0-9]+", "", str(s).lower())
@@ -185,6 +186,16 @@ def load_data(file_path_or_buffer):
     return df
 
 
+def _coerce_year_for_tmdb(year):
+    """Intenta convertir el año a int para TMDb, devolviendo None si no es válido."""
+    if year is None or pd.isna(year):
+        return None
+    try:
+        return int(float(year))
+    except Exception:
+        return None
+
+
 @st.cache_data
 def get_poster_url(title, year=None):
     """Devuelve solo la URL del póster de TMDb."""
@@ -194,15 +205,15 @@ def get_poster_url(title, year=None):
     if not title or pd.isna(title):
         return None
 
+    title = str(title).strip()
+    year_int = _coerce_year_for_tmdb(year)
+
     params = {
         "api_key": TMDB_API_KEY,
         "query": title,
     }
-    if year is not None and not pd.isna(year):
-        try:
-            params["year"] = int(year)
-        except Exception:
-            pass
+    if year_int is not None:
+        params["year"] = year_int
 
     try:
         r = requests.get(TMDB_SEARCH_URL, params=params, timeout=2)
@@ -232,15 +243,15 @@ def get_tmdb_vote_average(title, year=None):
     if not title or pd.isna(title):
         return None
 
+    title = str(title).strip()
+    year_int = _coerce_year_for_tmdb(year)
+
     params = {
         "api_key": TMDB_API_KEY,
         "query": title,
     }
-    if year is not None and not pd.isna(year):
-        try:
-            params["year"] = int(year)
-        except Exception:
-            pass
+    if year_int is not None:
+        params["year"] = year_int
 
     try:
         r = requests.get(TMDB_SEARCH_URL, params=params, timeout=2)
@@ -278,11 +289,13 @@ else:
         )
         st.stop()
 
+# Comprobación básica: necesitamos al menos 'Title'
+if "Title" not in df.columns:
+    st.error("El CSV debe contener una columna 'Title' para poder funcionar.")
+    st.stop()
+
 # Normalización para matching AFI y otras cosas
-if "Title" in df.columns:
-    df["NormTitle"] = df["Title"].apply(normalize_title)
-else:
-    df["NormTitle"] = ""
+df["NormTitle"] = df["Title"].apply(normalize_title)
 
 if "Year" in df.columns:
     df["YearInt"] = df["Year"].fillna(-1).astype(int)
@@ -312,14 +325,29 @@ st.markdown(
         background-color: {primary_bg};
         color: {text_color};
     }}
-    ...
+
+    .movie-card {{
+        background-color: {card_bg};
+        border-radius: 8px;
+        padding: 12px;
+        margin-bottom: 12px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.15);
+        font-size: 0.9rem;
+    }}
+
+    .movie-title {{
+        font-weight: 700;
+        margin-bottom: 4px;
+    }}
+
+    .movie-sub {{
+        font-size: 0.8rem;
+        line-height: 1.3;
+    }}
     </style>
     """,
     unsafe_allow_html=True,
 )
-
-
-
 
 # ----------------- Opciones de visualización -----------------
 
@@ -412,6 +440,14 @@ if selected_genres:
 if selected_directors:
     filtered = filtered[filtered["Directors"].isin(selected_directors)]
 
+# Pequeño resumen de filtros activos
+st.caption(
+    f"Filtros activos → Años: {year_range[0]}–{year_range[1]} | "
+    f"Your Rating: {rating_range[0]}–{rating_range[1]} | "
+    f"Géneros: {', '.join(selected_genres) if selected_genres else 'Todos'} | "
+    f"Directores: {', '.join(selected_directors) if selected_directors else 'Todos'}"
+)
+
 # ============================================================
 #                     BÚSQUEDA
 # ============================================================
@@ -479,10 +515,12 @@ cols_to_show = [
 
 table_df = filtered[cols_to_show].copy()
 
+
 def fmt_year(y):
     if pd.isna(y):
         return ""
     return f"{int(float(y))}"
+
 
 def fmt_rating(v):
     if pd.isna(v):
@@ -491,6 +529,7 @@ def fmt_rating(v):
         return f"{float(v):.1f}"
     except Exception:
         return str(v)
+
 
 format_dict = {}
 subset_cols = []
@@ -1045,11 +1084,9 @@ with st.expander("Ver favoritas", expanded=False):
                 directors = row.get("Directors", "")
                 url = row.get("URL", "")
 
+                etiqueta = f"{titulo}"
                 if pd.notna(nota):
                     etiqueta = f"{int(nota)}/10 — {titulo}"
-                else:
-                    etiqueta = f"{titulo}"
-
                 if pd.notna(year):
                     etiqueta += f" ({int(year)})"
 
@@ -1073,7 +1110,7 @@ with st.expander("Ver favoritas", expanded=False):
                     if isinstance(directors, str) and directors:
                         st.write(f"**Director(es):** {directors}")
                     if pd.notna(imdb_rating):
-                        st.write(f"**IMDb:** {imdb_rating}")
+                        st.write(f"**IMDb:** {fmt_rating(imdb_rating)}")
                     if isinstance(url, str) and url.startswith("http"):
                         st.write(f"[Ver en IMDb]({url})")
 
@@ -1132,9 +1169,9 @@ with st.expander("Ver galería de pósters", expanded=False):
                         st.markdown(f"**{titulo}**")
 
                     if pd.notna(nota):
-                        st.write(f"⭐ Tu nota: {nota}")
+                        st.write(f"⭐ Tu nota: {fmt_rating(nota)}")
                     if pd.notna(imdb_rating):
-                        st.write(f"IMDb: {imdb_rating}")
+                        st.write(f"IMDb: {fmt_rating(imdb_rating)}")
                     if isinstance(url, str) and url.startswith("http"):
                         st.write(f"[IMDb]({url})")
     else:
@@ -1155,7 +1192,7 @@ with st.expander("Ver recomendaciones por ratings globales", expanded=False):
     with col_b2:
         min_tmdb_global = st.slider("Mínimo TMDb Rating", 0.0, 10.0, 7.5, 0.1)
 
-    if st.button("Generar recomendaciones globales"):
+    if st.button("Generar recomendaciones globales", key="btn_global_recs"):
         if TMDB_API_KEY is None:
             st.warning("No hay TMDB_API_KEY configurada en Secrets, no puedo consultar TMDb.")
         else:
@@ -1208,10 +1245,10 @@ with st.expander("Ver recomendaciones por ratings globales", expanded=False):
                                 st.markdown(f"**{titulo}**")
 
                             if pd.notna(your_rating):
-                                st.write(f"⭐ Tu nota: {your_rating}")
+                                st.write(f"⭐ Tu nota: {fmt_rating(your_rating)}")
                             if pd.notna(imdb_rating):
-                                st.write(f"IMDb: {imdb_rating}")
-                            st.write(f"TMDb: {tmdb_rating:.1f}")
+                                st.write(f"IMDb: {fmt_rating(imdb_rating)}")
+                            st.write(f"TMDb: {fmt_rating(tmdb_rating)}")
                             if isinstance(genres, str) and genres:
                                 st.write(f"**Géneros:** {genres}")
                             if isinstance(url, str) and url.startswith("http"):
@@ -1235,7 +1272,7 @@ with st.expander("Ver recomendación aleatoria según tu gusto", expanded=True):
         ]
     )
 
-    if st.button("Recomendar una película"):
+    if st.button("Recomendar una película", key="btn_random_reco"):
         pool = filtered.copy()
 
         if modo == "Solo favoritas (nota ≥ 9)":
@@ -1290,9 +1327,9 @@ with st.expander("Ver recomendación aleatoria según tu gusto", expanded=True):
                     st.markdown(f"## {titulo}")
 
                 if pd.notna(nota):
-                    st.write(f"⭐ Tu nota: {nota}")
+                    st.write(f"⭐ Tu nota: {fmt_rating(nota)}")
                 if pd.notna(imdb_rating):
-                    st.write(f"IMDb: {imdb_rating}")
+                    st.write(f"IMDb: {fmt_rating(imdb_rating)}")
                 st.write(f"**Géneros:** {genres}")
                 st.write(f"**Director(es):** {directors}")
                 if isinstance(url, str) and url.startswith("http"):

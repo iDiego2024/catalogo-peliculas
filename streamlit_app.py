@@ -18,6 +18,12 @@ st.write(
     "Puedes filtrar por año, nota, géneros, director y usar una búsqueda global."
 )
 
+# ----------------- Config TMDb -----------------
+
+TMDB_API_KEY = st.secrets.get("TMDB_API_KEY", None)
+TMDB_SEARCH_URL = "https://api.themoviedb.org/3/search/movie"
+TMDB_IMAGE_BASE = "https://image.tmdb.org/t/p/w342"
+
 # ----------------- Lista AFI 100 Years...100 Movies (10th Anniversary Edition) -----------------
 
 AFI_LIST = [
@@ -251,13 +257,6 @@ def get_tmdb_vote_average(title, year=None):
         return None
 
 
-# ----------------- Config TMDb -----------------
-
-TMDB_API_KEY = st.secrets.get("TMDB_API_KEY", None)
-TMDB_SEARCH_URL = "https://api.themoviedb.org/3/search/movie"
-TMDB_IMAGE_BASE = "https://image.tmdb.org/t/p/w342"
-
-
 # ----------------- Carga de datos -----------------
 
 st.sidebar.header("📂 Datos")
@@ -279,7 +278,7 @@ else:
         )
         st.stop()
 
-# Normalización para matching (toda la app va a usar este df enriquecido)
+# Normalización para matching AFI y otras cosas
 if "Title" in df.columns:
     df["NormTitle"] = df["Title"].apply(normalize_title)
 else:
@@ -289,6 +288,59 @@ if "Year" in df.columns:
     df["YearInt"] = df["Year"].fillna(-1).astype(int)
 else:
     df["YearInt"] = -1
+
+# ----------------- Tema (claro / oscuro) + CSS -----------------
+
+st.sidebar.header("🎨 Tema")
+theme = st.sidebar.radio("Modo de color", ["Claro", "Oscuro"], index=0)
+
+if theme == "Oscuro":
+    primary_bg = "#0e1117"
+    secondary_bg = "#161b22"
+    text_color = "#f9fafb"
+    card_bg = "#161b22"
+else:
+    primary_bg = "#ffffff"
+    secondary_bg = "#f5f5f5"
+    text_color = "#111827"
+    card_bg = "#ffffff"
+
+st.markdown(
+    f"""
+    <style>
+    .stApp {{
+        background-color: {primary_bg};
+        color: {text_color};
+    }}
+    [data-testid="stMetricValue"], [data-testid="stMetricLabel"] {{
+        color: {text_color};
+    }}
+    .movie-card {{
+        background-color: {card_bg};
+        border-radius: 0.75rem;
+        padding: 0.75rem 0.9rem;
+        margin-bottom: 0.9rem;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.12);
+        border: 1px solid rgba(148,163,184,0.35);
+        transition: transform 0.15s ease, box-shadow 0.15s ease;
+    }}
+    .movie-card:hover {{
+        transform: translateY(-4px);
+        box-shadow: 0 10px 25px rgba(0,0,0,0.25);
+    }}
+    .movie-title {{
+        font-weight: 600;
+        margin-bottom: 0.3rem;
+        color: {text_color};
+    }}
+    .movie-sub {{
+        font-size: 0.85rem;
+        opacity: 0.9;
+    }}
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
 # ----------------- Opciones de visualización -----------------
 
@@ -419,7 +471,7 @@ if order_by in filtered.columns:
     filtered = filtered.sort_values(order_by, ascending=order_asc)
 
 # ============================================================
-#               RESUMEN + TABLA DE RESULTADOS
+#               RESUMEN + TABLA / TARJETAS
 # ============================================================
 
 st.markdown("## 📈 Resumen de resultados")
@@ -438,7 +490,7 @@ with col3:
     else:
         st.metric("Promedio IMDb", "N/A")
 
-st.markdown("### 📚 Tabla de resultados")
+st.markdown("### 📚 Resultados")
 
 cols_to_show = [
     c for c in ["Title", "Year", "Your Rating", "IMDb Rating",
@@ -452,7 +504,7 @@ table_df = filtered[cols_to_show].copy()
 def fmt_year(y):
     if pd.isna(y):
         return ""
-    return f"{int(y)}"
+    return f"{int(float(y))}"
 
 def fmt_rating(v):
     if pd.isna(v):
@@ -460,7 +512,7 @@ def fmt_rating(v):
     try:
         return f"{float(v):.1f}"
     except Exception:
-        return v
+        return str(v)
 
 # Diccionario de formatos y columnas a centrar
 format_dict = {}
@@ -492,11 +544,55 @@ styled_table = (
     )
 )
 
-st.dataframe(
-    styled_table,
-    use_container_width=True,
-    hide_index=True
+view_mode = st.radio(
+    "Modo de vista",
+    ["Tabla", "Tarjetas (grid)"],
+    horizontal=True
 )
+
+if view_mode == "Tabla":
+    st.dataframe(
+        styled_table,
+        use_container_width=True,
+        hide_index=True
+    )
+else:
+    if table_df.empty:
+        st.info("No hay resultados para mostrar en modo tarjetas.")
+    else:
+        st.markdown("Mostrando resultados como tarjetas:")
+        num_cols = 4
+        cols_cards = st.columns(num_cols)
+        cards_df = table_df.copy()
+
+        for i, (_, row) in enumerate(cards_df.iterrows()):
+            col = cols_cards[i % num_cols]
+            titulo = row.get("Title", "Sin título")
+            year = row.get("Year", "")
+            year_str = fmt_year(year) if "Year" in cards_df.columns else ""
+            your_rating = row.get("Your Rating", None)
+            imdb_rating = row.get("IMDb Rating", None)
+            genres = row.get("Genres", "")
+            directors = row.get("Directors", "")
+            url = row.get("URL", "")
+
+            your_str = fmt_rating(your_rating) if your_rating is not None else ""
+            imdb_str = fmt_rating(imdb_rating) if imdb_rating is not None else ""
+
+            card_html = f"""
+            <div class="movie-card">
+              <div class="movie-title">{titulo}{f" ({year_str})" if year_str else ""}</div>
+              <div class="movie-sub">
+                {("⭐ Tu nota: " + your_str + "<br>") if your_str else ""}
+                {("IMDb: " + imdb_str + "<br>") if imdb_str else ""}
+                {("<b>Géneros:</b> " + genres + "<br>") if isinstance(genres, str) and genres else ""}
+                {("<b>Director(es):</b> " + directors + "<br>") if isinstance(directors, str) and directors else ""}
+                {f'<a href="{url}" target="_blank">Ver en IMDb</a>' if isinstance(url, str) and url.startswith("http") else ""}
+              </div>
+            </div>
+            """
+            with col:
+                st.markdown(card_html, unsafe_allow_html=True)
 
 # ============================================================
 #                  ANÁLISIS Y TENDENCIAS
@@ -505,173 +601,174 @@ st.dataframe(
 st.markdown("---")
 st.markdown("## 📊 Análisis y tendencias")
 
-if filtered.empty:
-    st.info("No hay datos bajo los filtros actuales para mostrar gráficos.")
-else:
-    # Películas por año
-    col_a, col_b = st.columns(2)
-    with col_a:
-        st.markdown("**Películas por año**")
-        by_year = (
-            filtered[filtered["Year"].notna()]
-            .groupby("Year")
-            .size()
-            .reset_index(name="Count")
-            .sort_values("Year")
-        )
-        if not by_year.empty:
-            by_year_display = by_year.copy()
-            by_year_display["Year"] = by_year_display["Year"].astype(int).astype(str)
-            by_year_display = by_year_display.set_index("Year")
-            st.line_chart(by_year_display)
-        else:
-            st.write("Sin datos de año.")
-
-    # Distribución de tu nota
-    with col_b:
-        st.markdown("**Distribución de tu nota (Your Rating)**")
-        if "Your Rating" in filtered.columns and filtered["Your Rating"].notna().any():
-            ratings_counts = (
-                filtered["Your Rating"]
-                .round()
-                .value_counts()
-                .sort_index()
-                .reset_index()
+with st.expander("Ver análisis y tendencias", expanded=False):
+    if filtered.empty:
+        st.info("No hay datos bajo los filtros actuales para mostrar gráficos.")
+    else:
+        # Películas por año
+        col_a, col_b = st.columns(2)
+        with col_a:
+            st.markdown("**Películas por año**")
+            by_year = (
+                filtered[filtered["Year"].notna()]
+                .groupby("Year")
+                .size()
+                .reset_index(name="Count")
+                .sort_values("Year")
             )
-            ratings_counts.columns = ["Rating", "Count"]
-            ratings_counts["Rating"] = ratings_counts["Rating"].astype(int).astype(str)
-            ratings_counts = ratings_counts.set_index("Rating")
-            st.bar_chart(ratings_counts)
-        else:
-            st.write("No hay notas tuyas disponibles.")
+            if not by_year.empty:
+                by_year_display = by_year.copy()
+                by_year_display["Year"] = by_year_display["Year"].astype(int).astype(str)
+                by_year_display = by_year_display.set_index("Year")
+                st.line_chart(by_year_display)
+            else:
+                st.write("Sin datos de año.")
 
-    # Top géneros y IMDb por década
-    col_c, col_d = st.columns(2)
-    with col_c:
-        st.markdown("**Top géneros (por número de películas)**")
-        if "GenreList" in filtered.columns:
-            genres_exploded = filtered.explode("GenreList")
-            genres_exploded = genres_exploded[
-                genres_exploded["GenreList"].notna() &
-                (genres_exploded["GenreList"] != "")
-            ]
-            if not genres_exploded.empty:
-                top_genres = (
-                    genres_exploded["GenreList"]
+        # Distribución de tu nota
+        with col_b:
+            st.markdown("**Distribución de tu nota (Your Rating)**")
+            if "Your Rating" in filtered.columns and filtered["Your Rating"].notna().any():
+                ratings_counts = (
+                    filtered["Your Rating"]
+                    .round()
                     .value_counts()
-                    .head(15)
+                    .sort_index()
                     .reset_index()
                 )
-                top_genres.columns = ["Genre", "Count"]
-                top_genres = top_genres.set_index("Genre")
-                st.bar_chart(top_genres)
+                ratings_counts.columns = ["Rating", "Count"]
+                ratings_counts["Rating"] = ratings_counts["Rating"].astype(int).astype(str)
+                ratings_counts = ratings_counts.set_index("Rating")
+                st.bar_chart(ratings_counts)
             else:
-                st.write("No hay géneros disponibles.")
-        else:
-            st.write("No se encontró información de géneros.")
+                st.write("No hay notas tuyas disponibles.")
 
-    with col_d:
-        st.markdown("**IMDb promedio por década**")
-        if "IMDb Rating" in filtered.columns and filtered["IMDb Rating"].notna().any():
-            tmp = filtered[filtered["Year"].notna()].copy()
-            if not tmp.empty:
-                tmp["Decade"] = (tmp["Year"] // 10 * 10).astype(int)
-                decade_imdb = (
-                    tmp.groupby("Decade")["IMDb Rating"]
-                    .mean()
-                    .reset_index()
-                    .sort_values("Decade")
-                )
-                decade_imdb["Decade"] = decade_imdb["Decade"].astype(str)
-                decade_imdb = decade_imdb.set_index("Decade")
-                st.line_chart(decade_imdb)
-            else:
-                st.write("No hay datos suficientes de año para calcular décadas.")
-        else:
-            st.write("No hay IMDb Rating disponible.")
-
-    # ----------------- Análisis avanzado -----------------
-    st.markdown("### 🔬 Análisis avanzado (tu nota vs IMDb)")
-
-    if (
-        "Your Rating" in filtered.columns
-        and "IMDb Rating" in filtered.columns
-    ):
-        corr_df = filtered[["Your Rating", "IMDb Rating"]].dropna()
-    else:
-        corr_df = pd.DataFrame()
-
-    col_adv1, col_adv2 = st.columns(2)
-
-    with col_adv1:
-        if not corr_df.empty and len(corr_df) > 1:
-            corr = corr_df["Your Rating"].corr(corr_df["IMDb Rating"])
-            st.metric("Correlación Pearson (tu nota vs IMDb)", f"{corr:.2f}")
-        else:
-            st.metric("Correlación Pearson (tu nota vs IMDb)", "N/A")
-        st.write(
-            "Valores cercanos a 1 indican que sueles coincidir con IMDb; "
-            "cercanos a 0 indican independencia; negativos, que tiendes a ir en contra."
-        )
-
-    with col_adv2:
-        st.markdown("**Dispersión: IMDb vs tu nota**")
-        if not corr_df.empty:
-            scatter_chart = (
-                alt.Chart(corr_df.reset_index())
-                .mark_circle(size=60, opacity=0.6)
-                .encode(
-                    x=alt.X("IMDb Rating:Q", scale=alt.Scale(domain=[0, 10])),
-                    y=alt.Y("Your Rating:Q", scale=alt.Scale(domain=[0, 10])),
-                    tooltip=["IMDb Rating", "Your Rating"],
-                )
-                .properties(height=300)
-            )
-            st.altair_chart(scatter_chart, use_container_width=True)
-        else:
-            st.write("No hay datos suficientes para el gráfico de dispersión.")
-
-    # Heatmap género vs década (tu nota media)
-    st.markdown("**Mapa de calor: tu nota media por género y década**")
-    if "GenreList" in filtered.columns and "Your Rating" in filtered.columns:
-        tmp = filtered.copy()
-        tmp = tmp[tmp["Year"].notna() & tmp["Your Rating"].notna()]
-        if not tmp.empty:
-            tmp["Decade"] = (tmp["Year"] // 10 * 10).astype(int).astype(str)
-            tmp_genres = tmp.explode("GenreList")
-            tmp_genres = tmp_genres[
-                tmp_genres["GenreList"].notna() &
-                (tmp_genres["GenreList"] != "")
-            ]
-            if not tmp_genres.empty:
-                heat_df = (
-                    tmp_genres
-                    .groupby(["GenreList", "Decade"])["Your Rating"]
-                    .mean()
-                    .reset_index()
-                )
-                heat_chart = (
-                    alt.Chart(heat_df)
-                    .mark_rect()
-                    .encode(
-                        x=alt.X("Decade:N", title="Década"),
-                        y=alt.Y("GenreList:N", title="Género"),
-                        color=alt.Color(
-                            "Your Rating:Q",
-                            title="Tu nota media",
-                            scale=alt.Scale(scheme="viridis"),
-                        ),
-                        tooltip=["GenreList", "Decade", "Your Rating"],
+        # Top géneros y IMDb por década
+        col_c, col_d = st.columns(2)
+        with col_c:
+            st.markdown("**Top géneros (por número de películas)**")
+            if "GenreList" in filtered.columns:
+                genres_exploded = filtered.explode("GenreList")
+                genres_exploded = genres_exploded[
+                    genres_exploded["GenreList"].notna() &
+                    (genres_exploded["GenreList"] != "")
+                ]
+                if not genres_exploded.empty:
+                    top_genres = (
+                        genres_exploded["GenreList"]
+                        .value_counts()
+                        .head(15)
+                        .reset_index()
                     )
-                    .properties(height=400)
-                )
-                st.altair_chart(heat_chart, use_container_width=True)
+                    top_genres.columns = ["Genre", "Count"]
+                    top_genres = top_genres.set_index("Genre")
+                    st.bar_chart(top_genres)
+                else:
+                    st.write("No hay géneros disponibles.")
             else:
-                st.write("No hay datos suficientes de géneros para el mapa de calor.")
+                st.write("No se encontró información de géneros.")
+
+        with col_d:
+            st.markdown("**IMDb promedio por década**")
+            if "IMDb Rating" in filtered.columns and filtered["IMDb Rating"].notna().any():
+                tmp = filtered[filtered["Year"].notna()].copy()
+                if not tmp.empty:
+                    tmp["Decade"] = (tmp["Year"] // 10 * 10).astype(int)
+                    decade_imdb = (
+                        tmp.groupby("Decade")["IMDb Rating"]
+                        .mean()
+                        .reset_index()
+                        .sort_values("Decade")
+                    )
+                    decade_imdb["Decade"] = decade_imdb["Decade"].astype(str)
+                    decade_imdb = decade_imdb.set_index("Decade")
+                    st.line_chart(decade_imdb)
+                else:
+                    st.write("No hay datos suficientes de año para calcular décadas.")
+            else:
+                st.write("No hay IMDb Rating disponible.")
+
+        # Análisis avanzado
+        st.markdown("### 🔬 Análisis avanzado (tu nota vs IMDb)")
+
+        if (
+            "Your Rating" in filtered.columns
+            and "IMDb Rating" in filtered.columns
+        ):
+            corr_df = filtered[["Your Rating", "IMDb Rating"]].dropna()
         else:
-            st.write("No hay datos suficientes (año + tu nota) para el mapa de calor.")
-    else:
-        st.write("Faltan columnas necesarias para el mapa de calor.")
+            corr_df = pd.DataFrame()
+
+        col_adv1, col_adv2 = st.columns(2)
+
+        with col_adv1:
+            if not corr_df.empty and len(corr_df) > 1:
+                corr = corr_df["Your Rating"].corr(corr_df["IMDb Rating"])
+                st.metric("Correlación Pearson (tu nota vs IMDb)", f"{corr:.2f}")
+            else:
+                st.metric("Correlación Pearson (tu nota vs IMDb)", "N/A")
+            st.write(
+                "Valores cercanos a 1 indican que sueles coincidir con IMDb; "
+                "cercanos a 0 indican independencia; negativos, que tiendes a ir en contra."
+            )
+
+        with col_adv2:
+            st.markdown("**Dispersión: IMDb vs tu nota**")
+            if not corr_df.empty:
+                scatter_chart = (
+                    alt.Chart(corr_df.reset_index())
+                    .mark_circle(size=60, opacity=0.6)
+                    .encode(
+                        x=alt.X("IMDb Rating:Q", scale=alt.Scale(domain=[0, 10])),
+                        y=alt.Y("Your Rating:Q", scale=alt.Scale(domain=[0, 10])),
+                        tooltip=["IMDb Rating", "Your Rating"],
+                    )
+                    .properties(height=300)
+                )
+                st.altair_chart(scatter_chart, use_container_width=True)
+            else:
+                st.write("No hay datos suficientes para el gráfico de dispersión.")
+
+        # Heatmap género vs década (tu nota media)
+        st.markdown("**Mapa de calor: tu nota media por género y década**")
+        if "GenreList" in filtered.columns and "Your Rating" in filtered.columns:
+            tmp = filtered.copy()
+            tmp = tmp[tmp["Year"].notna() & tmp["Your Rating"].notna()]
+            if not tmp.empty:
+                tmp["Decade"] = (tmp["Year"] // 10 * 10).astype(int).astype(str)
+                tmp_genres = tmp.explode("GenreList")
+                tmp_genres = tmp_genres[
+                    tmp_genres["GenreList"].notna() &
+                    (tmp_genres["GenreList"] != "")
+                ]
+                if not tmp_genres.empty:
+                    heat_df = (
+                        tmp_genres
+                        .groupby(["GenreList", "Decade"])["Your Rating"]
+                        .mean()
+                        .reset_index()
+                    )
+                    heat_chart = (
+                        alt.Chart(heat_df)
+                        .mark_rect()
+                        .encode(
+                            x=alt.X("Decade:N", title="Década"),
+                            y=alt.Y("GenreList:N", title="Género"),
+                            color=alt.Color(
+                                "Your Rating:Q",
+                                title="Tu nota media",
+                                scale=alt.Scale(scheme="viridis"),
+                            ),
+                            tooltip=["GenreList", "Decade", "Your Rating"],
+                        )
+                        .properties(height=400)
+                    )
+                    st.altair_chart(heat_chart, use_container_width=True)
+                else:
+                    st.write("No hay datos suficientes de géneros para el mapa de calor.")
+            else:
+                st.write("No hay datos suficientes (año + tu nota) para el mapa de calor.")
+        else:
+            st.write("Faltan columnas necesarias para el mapa de calor.")
 
 # ============================================================
 #             ANÁLISIS DE GUSTOS PERSONALES
@@ -680,166 +777,167 @@ else:
 st.markdown("---")
 st.markdown("## 🧠 Análisis de tus gustos personales")
 
-if filtered.empty:
-    st.info("No hay datos bajo los filtros actuales para analizar tus gustos.")
-else:
-    col_g1, col_g2 = st.columns(2)
+with st.expander("Ver análisis de gustos personales", expanded=False):
+    if filtered.empty:
+        st.info("No hay datos bajo los filtros actuales para analizar tus gustos.")
+    else:
+        col_g1, col_g2 = st.columns(2)
 
-    # 1) Media y dispersión por género
-    with col_g1:
-        st.markdown("### 🎭 Géneros según tu gusto")
+        # 1) Media y dispersión por género
+        with col_g1:
+            st.markdown("### 🎭 Géneros según tu gusto")
 
-        if "GenreList" in filtered.columns and "Your Rating" in filtered.columns:
-            tmp = filtered.copy()
-            tmp = tmp[tmp["Your Rating"].notna()]
-            genres_exploded = tmp.explode("GenreList")
-            genres_exploded = genres_exploded[
-                genres_exploded["GenreList"].notna() &
-                (genres_exploded["GenreList"] != "")
-            ]
-            if not genres_exploded.empty:
-                genre_stats = (
-                    genres_exploded
-                    .groupby("GenreList")["Your Rating"]
-                    .agg(["count", "mean", "std"])
-                    .reset_index()
-                )
-                genre_stats = genre_stats[genre_stats["count"] >= 3]
-                if not genre_stats.empty:
-                    genre_stats = genre_stats.sort_values("mean", ascending=False)
-                    genre_stats["mean"] = genre_stats["mean"].round(2)
-                    genre_stats["std"] = genre_stats["std"].fillna(0).round(2)
+            if "GenreList" in filtered.columns and "Your Rating" in filtered.columns:
+                tmp = filtered.copy()
+                tmp = tmp[tmp["Your Rating"].notna()]
+                genres_exploded = tmp.explode("GenreList")
+                genres_exploded = genres_exploded[
+                    genres_exploded["GenreList"].notna() &
+                    (genres_exploded["GenreList"] != "")
+                ]
+                if not genres_exploded.empty:
+                    genre_stats = (
+                        genres_exploded
+                        .groupby("GenreList")["Your Rating"]
+                        .agg(["count", "mean", "std"])
+                        .reset_index()
+                    )
+                    genre_stats = genre_stats[genre_stats["count"] >= 3]
+                    if not genre_stats.empty:
+                        genre_stats = genre_stats.sort_values("mean", ascending=False)
+                        genre_stats["mean"] = genre_stats["mean"].round(2)
+                        genre_stats["std"] = genre_stats["std"].fillna(0).round(2)
+
+                        st.write(
+                            "Géneros ordenados por tu nota media. "
+                            "La desviación estándar (σ) indica cuánto varían tus notas dentro del género."
+                        )
+                        st.dataframe(
+                            genre_stats.rename(
+                                columns={
+                                    "GenreList": "Género",
+                                    "count": "Nº pelis",
+                                    "mean": "Tu nota media",
+                                    "std": "Desviación (σ)"
+                                }
+                            ),
+                            hide_index=True,
+                            use_container_width=True
+                        )
+                    else:
+                        st.write("No hay géneros con suficientes películas para mostrar estadísticas.")
+                else:
+                    st.write("No hay información suficiente de géneros para analizar tus gustos.")
+            else:
+                st.write("Faltan columnas 'GenreList' o 'Your Rating' para este análisis.")
+
+        # 2) Diferencia entre tu nota e IMDb
+        with col_g2:
+            st.markdown("### ⚖️ ¿Eres más exigente que IMDb?")
+
+            if "Your Rating" in filtered.columns and "IMDb Rating" in filtered.columns:
+                diff_df = filtered[
+                    filtered["Your Rating"].notna() &
+                    filtered["IMDb Rating"].notna()
+                ].copy()
+                if not diff_df.empty:
+                    diff_df["Diff"] = diff_df["Your Rating"] - diff_df["IMDb Rating"]
+
+                    media_diff = diff_df["Diff"].mean()
+                    st.metric(
+                        "Diferencia media (Tu nota - IMDb)",
+                        f"{media_diff:.2f}"
+                    )
 
                     st.write(
-                        "Géneros ordenados por tu nota media. "
-                        "La desviación estándar (σ) indica cuánto varían tus notas dentro del género."
+                        "Valores positivos ⇒ sueles puntuar **más alto** que IMDb. "
+                        "Valores negativos ⇒ sueles ser **más duro** que IMDb."
                     )
+
+                    hist = (
+                        diff_df["Diff"]
+                        .round(1)
+                        .value_counts()
+                        .sort_index()
+                        .reset_index()
+                    )
+                    hist.columns = ["Diff", "Count"]
+                    hist["Diff"] = hist["Diff"].astype(str)
+                    hist = hist.set_index("Diff")
+                    st.bar_chart(hist)
+                else:
+                    st.write("No hay suficientes películas con ambas notas (tuya e IMDb) para comparar.")
+            else:
+                st.write("Faltan columnas 'Your Rating' o 'IMDb Rating' para comparar con IMDb.")
+
+        # 3) Evolución de tu exigencia en el tiempo
+        st.markdown("### ⏳ Evolución de tu exigencia con los años")
+
+        if (
+            "Year" in filtered.columns and
+            "Your Rating" in filtered.columns and
+            "IMDb Rating" in filtered.columns
+        ):
+            tmp = filtered.copy()
+            tmp = tmp[
+                tmp["Year"].notna() &
+                tmp["Your Rating"].notna() &
+                tmp["IMDb Rating"].notna()
+            ]
+            if not tmp.empty:
+                by_year_gusto = (
+                    tmp.groupby("Year")[["Your Rating", "IMDb Rating"]]
+                    .mean()
+                    .reset_index()
+                    .sort_values("Year")
+                )
+                by_year_gusto["Diff"] = by_year_gusto["Your Rating"] - by_year_gusto["IMDb Rating"]
+
+                long_df = by_year_gusto.melt(
+                    id_vars="Year",
+                    value_vars=["Your Rating", "IMDb Rating"],
+                    var_name="Fuente",
+                    value_name="Rating"
+                )
+                long_df["Year"] = long_df["Year"].astype(int)
+
+                chart = (
+                    alt.Chart(long_df)
+                    .mark_line(point=True)
+                    .encode(
+                        x=alt.X("Year:O", title="Año"),
+                        y=alt.Y("Rating:Q", title="Nota media"),
+                        color=alt.Color("Fuente:N", title="Fuente"),
+                        tooltip=["Year", "Fuente", "Rating"]
+                    )
+                    .properties(height=350)
+                )
+                st.altair_chart(chart, use_container_width=True)
+
+                st.write(
+                    "Si tu curva (Your Rating) va **bajando** con los años mientras IMDb se mantiene, "
+                    "es que te estás volviendo más exigente. Si sube, te estás ablandando con la edad cinéfila 😄."
+                )
+
+                tmp["Decade"] = (tmp["Year"] // 10 * 10).astype(int)
+                decade_diff = (
+                    tmp.groupby("Decade")
+                    .apply(lambda g: (g["Your Rating"] - g["IMDb Rating"]).mean())
+                    .reset_index(name="Diff media")
+                    .sort_values("Decade")
+                )
+                if not decade_diff.empty:
+                    decade_diff["Decade"] = decade_diff["Decade"].astype(int)
+                    st.write("**Diferencia media por década (Tu nota - IMDb):**")
                     st.dataframe(
-                        genre_stats.rename(
-                            columns={
-                                "GenreList": "Género",
-                                "count": "Nº pelis",
-                                "mean": "Tu nota media",
-                                "std": "Desviación (σ)"
-                            }
-                        ),
+                        decade_diff.rename(columns={"Decade": "Década"}),
                         hide_index=True,
                         use_container_width=True
                     )
-                else:
-                    st.write("No hay géneros con suficientes películas para mostrar estadísticas.")
             else:
-                st.write("No hay información suficiente de géneros para analizar tus gustos.")
+                st.write("No hay suficientes datos (año + tus notas + IMDb) para analizar tu evolución.")
         else:
-            st.write("Faltan columnas 'GenreList' o 'Your Rating' para este análisis.")
-
-    # 2) Diferencia entre tu nota e IMDb
-    with col_g2:
-        st.markdown("### ⚖️ ¿Eres más exigente que IMDb?")
-
-        if "Your Rating" in filtered.columns and "IMDb Rating" in filtered.columns:
-            diff_df = filtered[
-                filtered["Your Rating"].notna() &
-                filtered["IMDb Rating"].notna()
-            ].copy()
-            if not diff_df.empty:
-                diff_df["Diff"] = diff_df["Your Rating"] - diff_df["IMDb Rating"]
-
-                media_diff = diff_df["Diff"].mean()
-                st.metric(
-                    "Diferencia media (Tu nota - IMDb)",
-                    f"{media_diff:.2f}"
-                )
-
-                st.write(
-                    "Valores positivos ⇒ sueles puntuar **más alto** que IMDb. "
-                    "Valores negativos ⇒ sueles ser **más duro** que IMDb."
-                )
-
-                hist = (
-                    diff_df["Diff"]
-                    .round(1)
-                    .value_counts()
-                    .sort_index()
-                    .reset_index()
-                )
-                hist.columns = ["Diff", "Count"]
-                hist["Diff"] = hist["Diff"].astype(str)
-                hist = hist.set_index("Diff")
-                st.bar_chart(hist)
-            else:
-                st.write("No hay suficientes películas con ambas notas (tuya e IMDb) para comparar.")
-        else:
-            st.write("Faltan columnas 'Your Rating' o 'IMDb Rating' para comparar con IMDb.")
-
-    # 3) Evolución de tu exigencia en el tiempo
-    st.markdown("### ⏳ Evolución de tu exigencia con los años")
-
-    if (
-        "Year" in filtered.columns and
-        "Your Rating" in filtered.columns and
-        "IMDb Rating" in filtered.columns
-    ):
-        tmp = filtered.copy()
-        tmp = tmp[
-            tmp["Year"].notna() &
-            tmp["Your Rating"].notna() &
-            tmp["IMDb Rating"].notna()
-        ]
-        if not tmp.empty:
-            by_year_gusto = (
-                tmp.groupby("Year")[["Your Rating", "IMDb Rating"]]
-                .mean()
-                .reset_index()
-                .sort_values("Year")
-            )
-            by_year_gusto["Diff"] = by_year_gusto["Your Rating"] - by_year_gusto["IMDb Rating"]
-
-            long_df = by_year_gusto.melt(
-                id_vars="Year",
-                value_vars=["Your Rating", "IMDb Rating"],
-                var_name="Fuente",
-                value_name="Rating"
-            )
-            long_df["Year"] = long_df["Year"].astype(int)
-
-            chart = (
-                alt.Chart(long_df)
-                .mark_line(point=True)
-                .encode(
-                    x=alt.X("Year:O", title="Año"),
-                    y=alt.Y("Rating:Q", title="Nota media"),
-                    color=alt.Color("Fuente:N", title="Fuente"),
-                    tooltip=["Year", "Fuente", "Rating"]
-                )
-                .properties(height=350)
-            )
-            st.altair_chart(chart, use_container_width=True)
-
-            st.write(
-                "Si tu curva (Your Rating) va **bajando** con los años mientras IMDb se mantiene, "
-                "es que te estás volviendo más exigente. Si sube, te estás ablandando con la edad cinéfila 😄."
-            )
-
-            tmp["Decade"] = (tmp["Year"] // 10 * 10).astype(int)
-            decade_diff = (
-                tmp.groupby("Decade")
-                .apply(lambda g: (g["Your Rating"] - g["IMDb Rating"]).mean())
-                .reset_index(name="Diff media")
-                .sort_values("Decade")
-            )
-            if not decade_diff.empty:
-                decade_diff["Decade"] = decade_diff["Decade"].astype(int)
-                st.write("**Diferencia media por década (Tu nota - IMDb):**")
-                st.dataframe(
-                    decade_diff.rename(columns={"Decade": "Década"}),
-                    hide_index=True,
-                    use_container_width=True
-                )
-        else:
-            st.write("No hay suficientes datos (año + tus notas + IMDb) para analizar tu evolución.")
-    else:
-        st.write("Faltan columnas 'Year', 'Your Rating' o 'IMDb Rating' para analizar tu evolución en el tiempo.")
+            st.write("Faltan columnas 'Year', 'Your Rating' o 'IMDb Rating' para analizar tu evolución en el tiempo.")
 
 # ============================================================
 #                   LISTA AFI 100 (10th Anniversary)
@@ -848,120 +946,114 @@ else:
 st.markdown("---")
 st.markdown("## 🎬 AFI's 100 Years...100 Movies — 10th Anniversary Edition")
 
-# DataFrame base con la lista AFI
-afi_df = pd.DataFrame(AFI_LIST)
-afi_df["NormTitle"] = afi_df["Title"].apply(normalize_title)
-afi_df["YearInt"] = afi_df["Year"]
+with st.expander("Ver progreso en la lista AFI 100", expanded=True):
 
-# Aseguramos columnas de normalización en tu df (por si acaso)
-if "NormTitle" not in df.columns:
-    if "Title" in df.columns:
-        df["NormTitle"] = df["Title"].apply(normalize_title)
-    else:
-        df["NormTitle"] = ""
-if "YearInt" not in df.columns:
-    if "Year" in df.columns:
-        df["YearInt"] = df["Year"].fillna(-1).astype(int)
-    else:
-        df["YearInt"] = -1
+    afi_df = pd.DataFrame(AFI_LIST)
+    afi_df["NormTitle"] = afi_df["Title"].apply(normalize_title)
+    afi_df["YearInt"] = afi_df["Year"]
 
-def find_match(afi_norm, year, df_full):
-    """Intenta encontrar una película de tu catálogo que corresponda a la entrada AFI."""
-    # 1) Intento con mismo año
-    candidates = df_full[df_full["YearInt"] == year]
+    if "YearInt" not in df.columns:
+        if "Year" in df.columns:
+            df["YearInt"] = df["Year"].fillna(-1).astype(int)
+        else:
+            df["YearInt"] = -1
+    if "NormTitle" not in df.columns:
+        if "Title" in df.columns:
+            df["NormTitle"] = df["Title"].apply(normalize_title)
+        else:
+            df["NormTitle"] = ""
 
-    # helpers de intento
-    def _try(cands):
-        if cands.empty:
-            return None
-        return cands.iloc[0]
+    def find_match(afi_norm, year, df_full):
+        """Intenta encontrar una película de tu catálogo que corresponda a la entrada AFI."""
+        candidates = df_full[df_full["YearInt"] == year]
 
-    # exacto por título normalizado
-    m = _try(candidates[candidates["NormTitle"] == afi_norm])
-    if m is not None:
-        return m
+        def _try(cands):
+            if cands.empty:
+                return None
+            return cands.iloc[0]
 
-    # AFI dentro del título de tu CSV
-    m = _try(candidates[candidates["NormTitle"].str.contains(afi_norm, regex=False, na=False)])
-    if m is not None:
-        return m
+        # mismo año
+        m = _try(candidates[candidates["NormTitle"] == afi_norm])
+        if m is not None:
+            return m
 
-    # Uno es substring del otro (por si tu título es más corto que el de AFI)
-    m = _try(
-        candidates[candidates["NormTitle"].apply(
-            lambda t: afi_norm in t or t in afi_norm
-        )]
+        m = _try(candidates[candidates["NormTitle"].str.contains(afi_norm, regex=False, na=False)])
+        if m is not None:
+            return m
+
+        m = _try(
+            candidates[candidates["NormTitle"].apply(
+                lambda t: afi_norm in t or t in afi_norm
+            )]
+        )
+        if m is not None:
+            return m
+
+        # ignorar año
+        candidates = df_full
+
+        m = _try(candidates[candidates["NormTitle"] == afi_norm])
+        if m is not None:
+            return m
+
+        m = _try(candidates[candidates["NormTitle"].str.contains(afi_norm, regex=False, na=False)])
+        if m is not None:
+            return m
+
+        m = _try(
+            candidates[candidates["NormTitle"].apply(
+                lambda t: afi_norm in t or t in afi_norm
+            )]
+        )
+        if m is not None:
+            return m
+
+        return None
+
+    afi_df["Your Rating"] = None
+    afi_df["IMDb Rating"] = None
+    afi_df["URL"] = None
+    afi_df["Seen"] = False
+
+    for idx, row in afi_df.iterrows():
+        match = find_match(row["NormTitle"], row["YearInt"], df)
+        if match is not None:
+            afi_df.at[idx, "Your Rating"] = match.get("Your Rating")
+            afi_df.at[idx, "IMDb Rating"] = match.get("IMDb Rating")
+            afi_df.at[idx, "URL"] = match.get("URL")
+            afi_df.at[idx, "Seen"] = True
+
+    total_afi = len(afi_df)
+    seen_afi = int(afi_df["Seen"].sum())
+    pct_afi = (seen_afi / total_afi) if total_afi > 0 else 0.0
+
+    col_afi1, col_afi2 = st.columns(2)
+    with col_afi1:
+        st.metric("Películas vistas del listado AFI", f"{seen_afi}/{total_afi}")
+    with col_afi2:
+        st.metric("Progreso en AFI 100", f"{pct_afi * 100:.1f}%")
+    st.progress(pct_afi)
+
+    st.write("Este progreso se calcula sobre tu catálogo completo de IMDb, no solo sobre los filtros actuales.")
+
+    afi_table = afi_df.copy()
+    afi_table["Vista"] = afi_table["Seen"].map({True: "✅", False: "—"})
+
+    afi_table_display = afi_table[[
+        "Rank", "Title", "Year", "Vista", "Your Rating", "IMDb Rating", "URL"
+    ]].copy()
+
+    afi_table_display["Year"] = afi_table_display["Year"].astype(int).astype(str)
+    afi_table_display["Your Rating"] = afi_table_display["Your Rating"].apply(fmt_rating)
+    afi_table_display["IMDb Rating"] = afi_table_display["IMDb Rating"].apply(fmt_rating)
+
+    st.markdown("### Detalle del listado AFI (con tu avance)")
+
+    st.dataframe(
+        afi_table_display,
+        hide_index=True,
+        use_container_width=True
     )
-    if m is not None:
-        return m
-
-    # 2) Fallback: ignorar el año y buscar en todo tu catálogo
-    candidates = df_full
-
-    m = _try(candidates[candidates["NormTitle"] == afi_norm])
-    if m is not None:
-        return m
-
-    m = _try(candidates[candidates["NormTitle"].str.contains(afi_norm, regex=False, na=False)])
-    if m is not None:
-        return m
-
-    m = _try(
-        candidates[candidates["NormTitle"].apply(
-            lambda t: afi_norm in t or t in afi_norm
-        )]
-    )
-    if m is not None:
-        return m
-
-    return None
-
-# Rellenamos columnas con tus datos
-afi_df["Your Rating"] = None
-afi_df["IMDb Rating"] = None
-afi_df["URL"] = None
-afi_df["Seen"] = False
-
-for idx, row in afi_df.iterrows():
-    match = find_match(row["NormTitle"], row["YearInt"], df)
-    if match is not None:
-        afi_df.at[idx, "Your Rating"] = match.get("Your Rating")
-        afi_df.at[idx, "IMDb Rating"] = match.get("IMDb Rating")
-        afi_df.at[idx, "URL"] = match.get("URL")
-        afi_df.at[idx, "Seen"] = True
-
-total_afi = len(afi_df)
-seen_afi = int(afi_df["Seen"].sum())
-pct_afi = (seen_afi / total_afi) if total_afi > 0 else 0.0
-
-col_afi1, col_afi2 = st.columns(2)
-with col_afi1:
-    st.metric("Películas vistas del listado AFI", f"{seen_afi}/{total_afi}")
-with col_afi2:
-    st.metric("Progreso en AFI 100", f"{pct_afi * 100:.1f}%")
-st.progress(pct_afi)
-
-st.write("Este progreso se calcula sobre tu catálogo completo de IMDb, no solo sobre los filtros actuales.")
-
-afi_table = afi_df.copy()
-afi_table["Vista"] = afi_table["Seen"].map({True: "✅", False: "—"})
-
-afi_table_display = afi_table[[
-    "Rank", "Title", "Year", "Vista", "Your Rating", "IMDb Rating", "URL"
-]].copy()
-
-afi_table_display["Year"] = afi_table_display["Year"].astype(int).astype(str)
-afi_table_display["Your Rating"] = afi_table_display["Your Rating"].apply(fmt_rating)
-afi_table_display["IMDb Rating"] = afi_table_display["IMDb Rating"].apply(fmt_rating)
-
-st.markdown("### Detalle del listado AFI (con tu avance)")
-
-st.dataframe(
-    afi_table_display,
-    hide_index=True,
-    use_container_width=True
-)
-
 
 # ============================================================
 #                        FAVORITAS
@@ -970,49 +1062,50 @@ st.dataframe(
 st.markdown("---")
 st.markdown("## ⭐ Tus favoritas (nota ≥ 9) en este filtro")
 
-if "Your Rating" in filtered.columns:
-    fav = filtered[filtered["Your Rating"] >= 9].copy()
-    if not fav.empty:
-        fav = fav.sort_values(["Your Rating", "Year"], ascending=[False, True])
-        fav = fav.head(12)
+with st.expander("Ver favoritas", expanded=False):
+    if "Your Rating" in filtered.columns:
+        fav = filtered[filtered["Your Rating"] >= 9].copy()
+        if not fav.empty:
+            fav = fav.sort_values(["Your Rating", "Year"], ascending=[False, True])
+            fav = fav.head(12)
 
-        for _, row in fav.iterrows():
-            titulo = row.get("Title", "Sin título")
-            year = row.get("Year", "")
-            nota = row.get("Your Rating", "")
-            imdb_rating = row.get("IMDb Rating", "")
-            genres = row.get("Genres", "")
-            directors = row.get("Directors", "")
-            url = row.get("URL", "")
+            for _, row in fav.iterrows():
+                titulo = row.get("Title", "Sin título")
+                year = row.get("Year", "")
+                nota = row.get("Your Rating", "")
+                imdb_rating = row.get("IMDb Rating", "")
+                genres = row.get("Genres", "")
+                directors = row.get("Directors", "")
+                url = row.get("URL", "")
 
-            etiqueta = f"{int(nota)}/10 — {titulo}"
-            if pd.notna(year):
-                etiqueta += f" ({int(year)})"
+                etiqueta = f"{int(nota)}/10 — {titulo}"
+                if pd.notna(year):
+                    etiqueta += f" ({int(year)})"
 
-            with st.expander(etiqueta):
-                col_img, col_info = st.columns([1, 3])
+                with st.expander(etiqueta):
+                    col_img, col_info = st.columns([1, 3])
 
-                with col_img:
-                    if show_posters_fav:
-                        poster_url = get_poster_url(titulo, year)
-                        if isinstance(poster_url, str) and poster_url:
-                            st.image(poster_url)
+                    with col_img:
+                        if show_posters_fav:
+                            poster_url = get_poster_url(titulo, year)
+                            if isinstance(poster_url, str) and poster_url:
+                                st.image(poster_url)
+                            else:
+                                st.write("Sin póster")
                         else:
-                            st.write("Sin póster")
-                    else:
-                        st.write("Póster desactivado (actívalo en la barra lateral).")
+                            st.write("Póster desactivado (actívalo en la barra lateral).")
 
-                with col_info:
-                    st.write(f"**Géneros:** {genres}")
-                    st.write(f"**Director(es):** {directors}")
-                    if pd.notna(imdb_rating):
-                        st.write(f"**IMDb:** {imdb_rating}")
-                    if isinstance(url, str) and url.startswith("http"):
-                        st.write(f"[Ver en IMDb]({url})")
+                    with col_info:
+                        st.write(f"**Géneros:** {genres}")
+                        st.write(f"**Director(es):** {directors}")
+                        if pd.notna(imdb_rating):
+                            st.write(f"**IMDb:** {imdb_rating}")
+                        if isinstance(url, str) and url.startswith("http"):
+                            st.write(f"[Ver en IMDb]({url})")
+        else:
+            st.write("No hay películas con nota ≥ 9 bajo estos filtros.")
     else:
-        st.write("No hay películas con nota ≥ 9 bajo estos filtros.")
-else:
-    st.write("No se encontró la columna 'Your Rating' en el CSV.")
+        st.write("No se encontró la columna 'Your Rating' en el CSV.")
 
 # ============================================================
 #                       GALERÍA
@@ -1021,54 +1114,55 @@ else:
 st.markdown("---")
 st.markdown("## 🎞 Galería de pósters (resultados filtrados)")
 
-if show_gallery:
-    if TMDB_API_KEY is None:
-        st.warning("No hay TMDB_API_KEY configurada en Secrets, no puedo cargar pósters.")
-    elif filtered.empty:
-        st.info("No hay resultados con los filtros actuales.")
+with st.expander("Ver galería de pósters", expanded=False):
+    if show_gallery:
+        if TMDB_API_KEY is None:
+            st.warning("No hay TMDB_API_KEY configurada en Secrets, no puedo cargar pósters.")
+        elif filtered.empty:
+            st.info("No hay resultados con los filtros actuales.")
+        else:
+            gal = filtered.copy()
+
+            if "Your Rating" in gal.columns:
+                gal = gal.sort_values(
+                    ["Your Rating", "Year"],
+                    ascending=[False, True]
+                )
+
+            gal = gal.head(24)
+
+            st.write(f"Mostrando hasta {len(gal)} pósters de las películas filtradas.")
+
+            cols = st.columns(4)
+
+            for i, (_, row) in enumerate(gal.iterrows()):
+                col = cols[i % 4]
+                with col:
+                    titulo = row.get("Title", "Sin título")
+                    year = row.get("Year", "")
+                    nota = row.get("Your Rating", "")
+                    imdb_rating = row.get("IMDb Rating", "")
+                    url = row.get("URL", "")
+
+                    poster_url = get_poster_url(titulo, year)
+                    if isinstance(poster_url, str) and poster_url:
+                        st.image(poster_url)
+                    else:
+                        st.write("Sin póster")
+
+                    if pd.notna(year):
+                        st.markdown(f"**{titulo}** ({int(year)})")
+                    else:
+                        st.markdown(f"**{titulo}**")
+
+                    if pd.notna(nota):
+                        st.write(f"⭐ Tu nota: {nota}")
+                    if pd.notna(imdb_rating):
+                        st.write(f"IMDb: {imdb_rating}")
+                    if isinstance(url, str) and url.startswith("http"):
+                        st.write(f"[IMDb]({url})")
     else:
-        gal = filtered.copy()
-
-        if "Your Rating" in gal.columns:
-            gal = gal.sort_values(
-                ["Your Rating", "Year"],
-                ascending=[False, True]
-            )
-
-        gal = gal.head(24)
-
-        st.write(f"Mostrando hasta {len(gal)} pósters de las películas filtradas.")
-
-        cols = st.columns(4)
-
-        for i, (_, row) in enumerate(gal.iterrows()):
-            col = cols[i % 4]
-            with col:
-                titulo = row.get("Title", "Sin título")
-                year = row.get("Year", "")
-                nota = row.get("Your Rating", "")
-                imdb_rating = row.get("IMDb Rating", "")
-                url = row.get("URL", "")
-
-                poster_url = get_poster_url(titulo, year)
-                if isinstance(poster_url, str) and poster_url:
-                    st.image(poster_url)
-                else:
-                    st.write("Sin póster")
-
-                if pd.notna(year):
-                    st.markdown(f"**{titulo}** ({int(year)})")
-                else:
-                    st.markdown(f"**{titulo}**")
-
-                if pd.notna(nota):
-                    st.write(f"⭐ Tu nota: {nota}")
-                if pd.notna(imdb_rating):
-                    st.write(f"IMDb: {imdb_rating}")
-                if isinstance(url, str) and url.startswith("http"):
-                    st.write(f"[IMDb]({url})")
-else:
-    st.info("Desactiva la galería desde la barra lateral si no quieres ver esta sección.")
+        st.info("Desactiva la galería desde la barra lateral si no quieres ver esta sección.")
 
 # ============================================================
 #             RECOMENDACIONES POR RATINGS GLOBALES
@@ -1077,73 +1171,75 @@ else:
 st.markdown("---")
 st.markdown("## 🎯 Recomendaciones por ratings globales (IMDb + TMDb)")
 
-col_a2, col_b2 = st.columns(2)
-with col_a2:
-    min_imdb_global = st.slider("Mínimo IMDb Rating", 0.0, 10.0, 8.0, 0.1)
-with col_b2:
-    min_tmdb_global = st.slider("Mínimo TMDb Rating", 0.0, 10.0, 7.5, 0.1)
+with st.expander("Ver recomendaciones por ratings globales", expanded=False):
 
-if st.button("Generar recomendaciones globales"):
-    if TMDB_API_KEY is None:
-        st.warning("No hay TMDB_API_KEY configurada en Secrets, no puedo consultar TMDb.")
-    else:
-        pool = filtered.copy()
-        if "IMDb Rating" in pool.columns:
-            pool = pool[pool["IMDb Rating"].notna() & (pool["IMDb Rating"] >= min_imdb_global)]
+    col_a2, col_b2 = st.columns(2)
+    with col_a2:
+        min_imdb_global = st.slider("Mínimo IMDb Rating", 0.0, 10.0, 8.0, 0.1)
+    with col_b2:
+        min_tmdb_global = st.slider("Mínimo TMDb Rating", 0.0, 10.0, 7.5, 0.1)
+
+    if st.button("Generar recomendaciones globales"):
+        if TMDB_API_KEY is None:
+            st.warning("No hay TMDB_API_KEY configurada en Secrets, no puedo consultar TMDb.")
         else:
-            pool = pool.iloc[0:0]
-
-        if pool.empty:
-            st.warning("No hay películas con IMDb Rating suficiente bajo los filtros actuales.")
-        else:
-            pool = pool.sort_values("IMDb Rating", ascending=False).head(40)
-
-            recomendaciones = []
-            for _, row in pool.iterrows():
-                titulo = row.get("Title", "Sin título")
-                year = row.get("Year", None)
-                tmdb_rating = get_tmdb_vote_average(titulo, year)
-                if tmdb_rating is None:
-                    continue
-                if tmdb_rating >= min_tmdb_global:
-                    recomendaciones.append((row, tmdb_rating))
-                if len(recomendaciones) >= 10:
-                    break
-
-            if not recomendaciones:
-                st.info("No encontré películas que estén altas tanto en IMDb como en TMDb con esos umbrales.")
+            pool = filtered.copy()
+            if "IMDb Rating" in pool.columns:
+                pool = pool[pool["IMDb Rating"].notna() & (pool["IMDb Rating"] >= min_imdb_global)]
             else:
-                for row, tmdb_rating in recomendaciones:
+                pool = pool.iloc[0:0]
+
+            if pool.empty:
+                st.warning("No hay películas con IMDb Rating suficiente bajo los filtros actuales.")
+            else:
+                pool = pool.sort_values("IMDb Rating", ascending=False).head(40)
+
+                recomendaciones = []
+                for _, row in pool.iterrows():
                     titulo = row.get("Title", "Sin título")
-                    year = row.get("Year", "")
-                    your_rating = row.get("Your Rating", "")
-                    imdb_rating = row.get("IMDb Rating", "")
-                    genres = row.get("Genres", "")
-                    url = row.get("URL", "")
+                    year = row.get("Year", None)
+                    tmdb_rating = get_tmdb_vote_average(titulo, year)
+                    if tmdb_rating is None:
+                        continue
+                    if tmdb_rating >= min_tmdb_global:
+                        recomendaciones.append((row, tmdb_rating))
+                    if len(recomendaciones) >= 10:
+                        break
 
-                    col_img, col_info = st.columns([1, 3])
-                    with col_img:
-                        poster_url = get_poster_url(titulo, year)
-                        if isinstance(poster_url, str) and poster_url:
-                            st.image(poster_url)
-                        else:
-                            st.write("Sin póster")
+                if not recomendaciones:
+                    st.info("No encontré películas que estén altas tanto en IMDb como en TMDb con esos umbrales.")
+                else:
+                    for row, tmdb_rating in recomendaciones:
+                        titulo = row.get("Title", "Sin título")
+                        year = row.get("Year", "")
+                        your_rating = row.get("Your Rating", "")
+                        imdb_rating = row.get("IMDb Rating", "")
+                        genres = row.get("Genres", "")
+                        url = row.get("URL", "")
 
-                    with col_info:
-                        if pd.notna(year):
-                            st.markdown(f"**{titulo}** ({int(year)})")
-                        else:
-                            st.markdown(f"**{titulo}**")
+                        col_img, col_info = st.columns([1, 3])
+                        with col_img:
+                            poster_url = get_poster_url(titulo, year)
+                            if isinstance(poster_url, str) and poster_url:
+                                st.image(poster_url)
+                            else:
+                                st.write("Sin póster")
 
-                        if pd.notna(your_rating):
-                            st.write(f"⭐ Tu nota: {your_rating}")
-                        if pd.notna(imdb_rating):
-                            st.write(f"IMDb: {imdb_rating}")
-                        st.write(f"TMDb: {tmdb_rating:.1f}")
-                        if isinstance(genres, str) and genres:
-                            st.write(f"**Géneros:** {genres}")
-                        if isinstance(url, str) and url.startswith("http"):
-                            st.write(f"[Ver en IMDb]({url})")
+                        with col_info:
+                            if pd.notna(year):
+                                st.markdown(f"**{titulo}** ({int(year)})")
+                            else:
+                                st.markdown(f"**{titulo}**")
+
+                            if pd.notna(your_rating):
+                                st.write(f"⭐ Tu nota: {your_rating}")
+                            if pd.notna(imdb_rating):
+                                st.write(f"IMDb: {imdb_rating}")
+                            st.write(f"TMDb: {tmdb_rating:.1f}")
+                            if isinstance(genres, str) and genres:
+                                st.write(f"**Géneros:** {genres}")
+                            if isinstance(url, str) and url.startswith("http"):
+                                st.write(f"[Ver en IMDb]({url})")
 
 # ============================================================
 #                      ¿QUÉ VER HOY?
@@ -1152,74 +1248,76 @@ if st.button("Generar recomendaciones globales"):
 st.markdown("---")
 st.markdown("## 🎲 ¿Qué ver hoy? (según tu propio gusto)")
 
-modo = st.selectbox(
-    "Modo de recomendación",
-    [
-        "Entre todas las películas filtradas",
-        "Solo favoritas (nota ≥ 9)",
-        "Entre tus 8–10 de los últimos 20 años"
-    ]
-)
+with st.expander("Ver recomendación aleatoria según tu gusto", expanded=True):
 
-if st.button("Recomendar una película"):
-    pool = filtered.copy()
+    modo = st.selectbox(
+        "Modo de recomendación",
+        [
+            "Entre todas las películas filtradas",
+            "Solo favoritas (nota ≥ 9)",
+            "Entre tus 8–10 de los últimos 20 años"
+        ]
+    )
 
-    if modo == "Solo favoritas (nota ≥ 9)":
-        if "Your Rating" in pool.columns:
-            pool = pool[pool["Your Rating"] >= 9]
-        else:
-            pool = pool.iloc[0:0]
+    if st.button("Recomendar una película"):
+        pool = filtered.copy()
 
-    elif modo == "Entre tus 8–10 de los últimos 20 años":
-        if "Your Rating" in pool.columns and "Year" in pool.columns:
-            pool = pool[
-                (pool["Your Rating"] >= 8) &
-                (pool["Year"].notna()) &
-                (pool["Year"] >= (pd.Timestamp.now().year - 20))
-            ]
-        else:
-            pool = pool.iloc[0:0]
-
-    if pool.empty:
-        st.warning("No hay películas que cumplan con el modo seleccionado y los filtros actuales.")
-    else:
-        if "Your Rating" in pool.columns and pool["Your Rating"].notna().any():
-            notas = pool["Your Rating"].fillna(0)
-            pesos = (notas + 1).tolist()
-        else:
-            pesos = None
-
-        idx = random.choices(pool.index.tolist(), weights=pesos, k=1)[0]
-        peli = pool.loc[idx]
-
-        titulo = peli.get("Title", "Sin título")
-        year = peli.get("Year", "")
-        nota = peli.get("Your Rating", "")
-        imdb_rating = peli.get("IMDb Rating", "")
-        genres = peli.get("Genres", "")
-        directors = peli.get("Directors", "")
-        url = peli.get("URL", "")
-
-        col_img, col_info = st.columns([1, 3])
-
-        with col_img:
-            poster_url = get_poster_url(titulo, year)
-            if isinstance(poster_url, str) and poster_url:
-                st.image(poster_url)
+        if modo == "Solo favoritas (nota ≥ 9)":
+            if "Your Rating" in pool.columns:
+                pool = pool[pool["Your Rating"] >= 9]
             else:
-                st.write("Sin póster")
+                pool = pool.iloc[0:0]
 
-        with col_info:
-            if pd.notna(year):
-                st.markdown(f"## {titulo} ({int(year)})")
+        elif modo == "Entre tus 8–10 de los últimos 20 años":
+            if "Your Rating" in pool.columns and "Year" in pool.columns:
+                pool = pool[
+                    (pool["Your Rating"] >= 8) &
+                    (pool["Year"].notna()) &
+                    (pool["Year"] >= (pd.Timestamp.now().year - 20))
+                ]
             else:
-                st.markdown(f"## {titulo}")
+                pool = pool.iloc[0:0]
 
-            if pd.notna(nota):
-                st.write(f"⭐ Tu nota: {nota}")
-            if pd.notna(imdb_rating):
-                st.write(f"IMDb: {imdb_rating}")
-            st.write(f"**Géneros:** {genres}")
-            st.write(f"**Director(es):** {directors}")
-            if isinstance(url, str) and url.startswith("http"):
-                st.write(f"[Ver en IMDb]({url})")
+        if pool.empty:
+            st.warning("No hay películas que cumplan con el modo seleccionado y los filtros actuales.")
+        else:
+            if "Your Rating" in pool.columns and pool["Your Rating"].notna().any():
+                notas = pool["Your Rating"].fillna(0)
+                pesos = (notas + 1).tolist()
+            else:
+                pesos = None
+
+            idx = random.choices(pool.index.tolist(), weights=pesos, k=1)[0]
+            peli = pool.loc[idx]
+
+            titulo = peli.get("Title", "Sin título")
+            year = peli.get("Year", "")
+            nota = peli.get("Your Rating", "")
+            imdb_rating = peli.get("IMDb Rating", "")
+            genres = peli.get("Genres", "")
+            directors = peli.get("Directors", "")
+            url = peli.get("URL", "")
+
+            col_img, col_info = st.columns([1, 3])
+
+            with col_img:
+                poster_url = get_poster_url(titulo, year)
+                if isinstance(poster_url, str) and poster_url:
+                    st.image(poster_url)
+                else:
+                    st.write("Sin póster")
+
+            with col_info:
+                if pd.notna(year):
+                    st.markdown(f"## {titulo} ({int(year)})")
+                else:
+                    st.markdown(f"## {titulo}")
+
+                if pd.notna(nota):
+                    st.write(f"⭐ Tu nota: {nota}")
+                if pd.notna(imdb_rating):
+                    st.write(f"IMDb: {imdb_rating}")
+                st.write(f"**Géneros:** {genres}")
+                st.write(f"**Director(es):** {directors}")
+                if isinstance(url, str) and url.startswith("http"):
+                    st.write(f"[Ver en IMDb]({url})")

@@ -336,8 +336,17 @@ for c in ["Title", "Year", "Your Rating", "IMDb Rating",
     if c in filtered.columns:
         columns_to_show.append(c)
 
+# Copia para formateo de visualización
+table_df = filtered[columns_to_show].copy()
+
+# Formatear Year como texto sin separador de miles
+if "Year" in table_df.columns:
+    table_df["Year"] = table_df["Year"].apply(
+        lambda y: "" if pd.isna(y) else str(int(y))
+    )
+
 st.dataframe(
-    filtered[columns_to_show],
+    table_df,
     use_container_width=True,
     hide_index=True
 )
@@ -591,7 +600,7 @@ if st.button("Recomendar una película"):
             if pd.notna(year):
                 st.markdown(f"## {titulo} ({int(year)})")
             else:
-                st.markdown("## {titulo}")
+                st.markdown(f"## {titulo}")
 
             if pd.notna(nota):
                 st.write(f"⭐ Tu nota: {nota}")

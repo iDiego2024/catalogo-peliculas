@@ -30,25 +30,36 @@ TMDB_IMAGE_BASE = "https://image.tmdb.org/t/p/w342"
 def load_data(file_path_or_buffer):
     df = pd.read_csv(file_path_or_buffer)
 
-    # Asegurar tipos
+    # Asegurar tipos básicos
+
+    # Tu nota
     if "Your Rating" in df.columns:
         df["Your Rating"] = pd.to_numeric(df["Your Rating"], errors="coerce")
     else:
         df["Your Rating"] = None
 
+    # IMDb Rating
     if "IMDb Rating" in df.columns:
         df["IMDb Rating"] = pd.to_numeric(df["IMDb Rating"], errors="coerce")
     else:
         df["IMDb Rating"] = None
 
+    # Year: extraer solo un año de 4 dígitos aunque venga sucio (ej. "2019–2020", "2019,", etc.)
     if "Year" in df.columns:
-        df["Year"] = pd.to_numeric(df["Year"], errors="coerce")
+        df["Year"] = (
+            df["Year"]
+            .astype(str)
+            .str.extract(r"(\d{4})")[0]  # primer grupo de 4 dígitos
+            .astype(float)
+        )
     else:
         df["Year"] = None
 
+    # Genres
     if "Genres" not in df.columns:
         df["Genres"] = ""
 
+    # Directors
     if "Directors" not in df.columns:
         df["Directors"] = ""
 
@@ -58,7 +69,7 @@ def load_data(file_path_or_buffer):
         lambda x: [] if pd.isna(x) or x == "" else str(x).split(", ")
     )
 
-        # Parsear fecha correctamente
+    # Parsear fecha calificada
     if "Date Rated" in df.columns:
         df["Date Rated"] = pd.to_datetime(df["Date Rated"], errors="coerce").dt.date
 
@@ -272,7 +283,7 @@ with col2:
     if "Your Rating" in filtered.columns and filtered["Your Rating"].notna().any():
         st.metric(
             "Promedio de tu nota",
-            f"{filtered['Your Rating'].mean():.2f}"
+            f"{filtered['Your Rating"].mean():.2f}"
         )
     else:
         st.metric("Promedio de tu nota", "N/A")
@@ -281,12 +292,12 @@ with col3:
     if "IMDb Rating" in filtered.columns and filtered["IMDb Rating"].notna().any():
         st.metric(
             "Promedio IMDb",
-            f"{filtered['IMDb Rating'].mean():.2f}"
+            f"{filtered['IMDb Rating"].mean():.2f}"
         )
     else:
         st.metric("Promedio IMDb", "N/A")
 
-# ----------------- Buscador centrado -----------------
+# ----------------- Buscador (alineado a la izquierda) -----------------
 
 st.markdown("### 🔎 Buscar por título")
 
@@ -393,7 +404,6 @@ if show_gallery:
     elif filtered.empty:
         st.info("No hay resultados con los filtros actuales.")
     else:
-        # Tomamos un subconjunto limitado para no saturar la API
         gal = filtered.copy()
 
         # Orden por tu nota (desc) y año

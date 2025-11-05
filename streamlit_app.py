@@ -1,11 +1,6 @@
 import streamlit as st
 import pandas as pd
-import requests  # 👈 nuevo
-
-TMDB_API_KEY = st.secrets.get("506c9387e637ecb32fd3b1ab6ade4259", None)
-TMDB_SEARCH_URL = "https://api.themoviedb.org/3/search/movie"
-TMDB_IMAGE_BASE = "https://image.tmdb.org/t/p/w342"
-
+import requests
 
 # ----------------- Configuración general -----------------
 
@@ -15,55 +10,19 @@ st.set_page_config(
 )
 
 st.title("🎥 Mi catálogo de películas (IMDb)")
-
 st.write(
     "App basada en tu export de IMDb. "
     "Puedes filtrar por año, nota, géneros, director y buscar por título."
 )
 
-@st.cache_data
-def get_poster_url(title, year=None):
-    """Devuelve la URL del póster de TMDb para un título (y opcionalmente año)."""
-    if TMDB_API_KEY is None:
-        return None  # No hay API key, no hacemos nada
+# ----------------- Config TMDb -----------------
 
-    if not title or pd.isna(title):
-        return None
-
-    params = {
-        "api_key": TMDB_API_KEY,
-        "query": title,
-    }
-    # Si tenemos año, ayuda a afinar resultados
-    if year is not None and not pd.isna(year):
-        try:
-            params["year"] = int(year)
-        except Exception:
-            pass
-
-    try:
-        r = requests.get(TMDB_SEARCH_URL, params=params, timeout=5)
-        if r.status_code != 200:
-            return None
-
-        data = r.json()
-        results = data.get("results", [])
-        if not results:
-            return None
-
-        poster_path = results[0].get("poster_path")
-        if not poster_path:
-            return None
-
-        return f"{TMDB_IMAGE_BASE}{poster_path}"
-    except Exception:
-        return None
+TMDB_API_KEY = st.secrets.get("TMDB_API_KEY", None)
+TMDB_SEARCH_URL = "https://api.themoviedb.org/3/search/movie"
+TMDB_IMAGE_BASE = "https://image.tmdb.org/t/p/w342"
 
 
-
-
-
-# ----------------- Carga de datos -----------------
+# ----------------- Funciones auxiliares -----------------
 
 
 @st.cache_data
@@ -100,6 +59,47 @@ def load_data(file_path_or_buffer):
 
     return df
 
+
+@st.cache_data
+def get_poster_url(title, year=None):
+    """Devuelve la URL del póster de TMDb para un título (y opcionalmente año)."""
+    if TMDB_API_KEY is None:
+        return None  # No hay API key configurada
+
+    if not title or pd.isna(title):
+        return None
+
+    params = {
+        "api_key": TMDB_API_KEY,
+        "query": title,
+    }
+    if year is not None and not pd.isna(year):
+        try:
+            params["year"] = int(year)
+        except Exception:
+            pass
+
+    try:
+        # Timeout corto para que la app no quede pegada
+        r = requests.get(TMDB_SEARCH_URL, params=params, timeout=2)
+        if r.status_code != 200:
+            return None
+
+        data = r.json()
+        results = data.get("results", [])
+        if not results:
+            return None
+
+        poster_path = results[0].get("poster_path")
+        if not poster_path:
+            return None
+
+        return f"{TMDB_IMAGE_BASE}{poster_path}"
+    except Exception:
+        return None
+
+
+# ----------------- Carga de datos -----------------
 
 st.sidebar.header("📂 Datos")
 
@@ -273,7 +273,7 @@ st.dataframe(
     hide_index=True
 )
 
-# ----------------- Favoritas -----------------
+# ----------------- Favoritas con póster -----------------
 
 st.markdown("---")
 st.subheader("⭐ Tus favoritas (nota ≥ 9) en este filtro")
@@ -282,6 +282,9 @@ if "Your Rating" in filtered.columns:
     fav = filtered[filtered["Your Rating"] >= 9].copy()
     if not fav.empty:
         fav = fav.sort_values(["Your Rating", "Year"], ascending=[False, True])
+
+        # límite para no hacer demasiadas llamadas a la API
+        fav = fav.head(12)
 
         for _, row in fav.iterrows():
             titulo = row.get("Title", "Sin título")
@@ -297,7 +300,6 @@ if "Your Rating" in filtered.columns:
                 etiqueta += f" ({int(year)})"
 
             with st.expander(etiqueta):
-                # layout en dos columnas: póster + info
                 col_img, col_info = st.columns([1, 3])
 
                 with col_img:
@@ -318,4 +320,3 @@ if "Your Rating" in filtered.columns:
         st.write("No hay películas con nota ≥ 9 bajo estos filtros.")
 else:
     st.write("No se encontró la columna 'Your Rating' en el CSV.")
-

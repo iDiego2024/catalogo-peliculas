@@ -285,7 +285,8 @@ def get_omdb_awards(title, year=None):
     if not title or pd.isna(title):
         return None
 
-    base_url = "http://www.omdbapi.com/"
+    # IMPORTANTE: HTTPS
+    base_url = "https://www.omdbapi.com/"
 
     raw_title = str(title).strip()
     simple_title = re.sub(r"\s*\(.*?\)\s*$", "", raw_title).strip()
@@ -311,18 +312,18 @@ def get_omdb_awards(title, year=None):
 
     data = None
 
-    # 1) intento por título "tal cual", 2) título simplificado sin paréntesis
+    # 1) intento exacto por título / título sin paréntesis
     for t in [raw_title, simple_title]:
-        params = {"apikey": api_key, "t": t}
+        params = {"apikey": api_key, "t": t, "type": "movie"}
         if year_int:
             params["y"] = year_int
         data = _query(params)
         if data:
             break
 
-    # 3) búsqueda general si lo anterior falla
+    # 2) búsqueda general si lo anterior falla
     if not data:
-        params = {"apikey": api_key, "s": simple_title}
+        params = {"apikey": api_key, "s": simple_title, "type": "movie"}
         if year_int:
             params["y"] = year_int
         search = _query(params)
@@ -388,7 +389,7 @@ def get_omdb_awards(title, year=None):
     elif "golden globe" in text_lower:
         golden_globes = 1
 
-    # Palma de Oro (normalmente con ese texto)
+    # Palma de Oro (normalmente aparece así en el texto)
     if re.search(r"palme\s+d['’]or", text_lower):
         palme_dor = True
 
@@ -1303,7 +1304,10 @@ else:
 
                     # Texto de premios
                     if awards is None:
-                        awards_text = "Sin datos de premios en OMDb."
+                        awards_text = (
+                            "No se pudo obtener información de premios desde OMDb "
+                            "(puede ser problema de API key, límites o conexión)."
+                        )
                     else:
                         parts = []
                         if awards.get("oscars", 0):
@@ -1319,6 +1323,11 @@ else:
 
                         if not parts:
                             awards_text = "No se detectan grandes premios en el texto de OMDb."
+                            if awards.get("raw"):
+                                awards_text += (
+                                    f"<br><span style='font-size:0.8rem;color:#9ca3af;'>"
+                                    f"OMDb: {awards['raw']}</span>"
+                                )
                         else:
                             awards_text = " · ".join(parts)
                             if awards.get("raw"):

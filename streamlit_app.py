@@ -15,7 +15,7 @@ st.set_page_config(
 st.title("🎥 Mi catálogo de películas (IMDb)")
 st.write(
     "App basada en tu export de IMDb. "
-    "Puedes filtrar por año, nota, géneros, director y usar búsquedas globales o dentro de los filtros."
+    "Una sola búsqueda central, filtros en la barra lateral y vista tipo Netflix."
 )
 
 # ----------------- Config TMDb -----------------
@@ -486,7 +486,7 @@ def get_streaming_availability(title, year=None, country="CL"):
                 if name:
                     providers.add(name)
 
-        link = cdata.get("link")  # enlace a página de TMDb con opciones de streaming
+        link = cdata.get("link")  # enlace a la página de TMDb con opciones de streaming
 
         return {
             "platforms": sorted(list(providers)) if providers else [],
@@ -711,9 +711,9 @@ show_posters_fav = st.sidebar.checkbox(
     "Mostrar pósters TMDb en favoritas (nota ≥ 9)",
     value=True
 )
-show_gallery = st.sidebar.checkbox(
-    "Mostrar galería de pósters para resultados filtrados",
-    value=True
+max_netflix_items = st.sidebar.slider(
+    "Máx. películas en modo Netflix",
+    min_value=4, max_value=20, value=8, step=1
 )
 
 # ----------------- Filtros (sidebar) -----------------
@@ -769,7 +769,7 @@ order_by = st.sidebar.selectbox(
 )
 order_asc = st.sidebar.checkbox("Orden ascendente", value=False)
 
-# ----------------- Aplicar filtros básicos (base para todas las pestañas) -----------------
+# ----------------- Aplicar filtros básicos -----------------
 
 filtered = df.copy()
 
@@ -820,7 +820,44 @@ def fmt_rating(v):
         return str(v)
 
 
-# ----------------- Pestañas principales -----------------
+# ----------------- BÚSQUEDA ÚNICA (en tiempo real) -----------------
+
+st.markdown("## 🔎 Búsqueda en tu catálogo (sobre los filtros actuales)")
+
+search_query = st.text_input(
+    "Buscar por título, director, género, año o calificaciones",
+    placeholder="Escribe cualquier cosa… (se aplica en tiempo real)",
+    key="busqueda_unica"
+)
+
+# función de búsqueda
+def apply_search(df_in, query):
+    if not query:
+        return df_in
+    q = query.strip().lower()
+
+    def match_any(row):
+        campos = [
+            row.get("Title", ""),
+            row.get("Original Title", ""),
+            row.get("Directors", ""),
+            row.get("Genres", ""),
+            row.get("Year", ""),
+            row.get("Your Rating", ""),
+            row.get("IMDb Rating", "")
+        ]
+        texto = " ".join(str(x).lower() for x in campos if pd.notna(x))
+        return q in texto
+
+    return df_in[df_in.apply(match_any, axis=1)]
+
+
+filtered_view = apply_search(filtered.copy(), search_query)
+
+if order_by in filtered_view.columns:
+    filtered_view = filtered_view.sort_values(order_by, ascending=order_asc)
+
+# ----------------- TABS PRINCIPALES -----------------
 
 tab_catalog, tab_analysis, tab_awards, tab_streaming = st.tabs(
     ["🎬 Catálogo", "📊 Análisis", "🏆 Premios & listas", "🌐 Streaming & recos"]
@@ -831,94 +868,11 @@ tab_catalog, tab_analysis, tab_awards, tab_streaming = st.tabs(
 # ============================================================
 
 with tab_catalog:
-    st.markdown("## 🔎 Búsqueda global en todo tu catálogo")
-
-    global_query = st.text_input(
-        "Buscar cualquier película de tu catálogo completo (ignora filtros)",
-        placeholder="Título, director, género, año, nota…",
-        key="busqueda_global"
-    )
-
-    if global_query:
-        qg = global_query.strip().lower()
-
-        def match_any_global(row):
-            campos = [
-                row.get("Title", ""),
-                row.get("Original Title", ""),
-                row.get("Directors", ""),
-                row.get("Genres", ""),
-                row.get("Year", ""),
-                row.get("Your Rating", ""),
-                row.get("IMDb Rating", "")
-            ]
-            texto = " ".join(str(x).lower() for x in campos if pd.notna(x))
-            return qg in texto
-
-        global_results = df[df.apply(match_any_global, axis=1)]
-
-        st.write(f"Resultados globales encontrados: {len(global_results)}")
-
-        if not global_results.empty:
-            cols_global = [
-                c for c in ["Title", "Year", "Your Rating", "IMDb Rating", "Genres", "Directors", "URL"]
-                if c in global_results.columns
-            ]
-            gr = global_results[cols_global].copy()
-
-            if "Year" in gr.columns:
-                gr["Year"] = gr["Year"].apply(fmt_year)
-            if "Your Rating" in gr.columns:
-                gr["Your Rating"] = gr["Your Rating"].apply(fmt_rating)
-            if "IMDb Rating" in gr.columns:
-                gr["IMDb Rating"] = gr["IMDb Rating"].apply(fmt_rating)
-
-            st.dataframe(gr, use_container_width=True, hide_index=True)
-
-    st.markdown("---")
-    st.markdown("## 🔎 Búsqueda dentro de los resultados filtrados")
-
-    search_query = st.text_input(
-        "Buscar en títulos, directores, géneros, años o calificaciones (solo dentro de los filtros activos)",
-        label_visibility="collapsed",
-        placeholder="Escribe cualquier cosa…",
-        key="busqueda_filtros"
-    )
-
-    # Creamos una vista local filtrada para el catálogo
-    filtered_view = filtered.copy()
-
-    if search_query:
-        q = search_query.strip().lower()
-
-        def match_any(row):
-            campos = [
-                row.get("Title", ""),
-                row.get("Original Title", ""),
-                row.get("Directors", ""),
-                row.get("Genres", ""),
-                row.get("Year", ""),
-                row.get("Your Rating", ""),
-                row.get("IMDb Rating", "")
-            ]
-            texto = " ".join(str(x).lower() for x in campos if pd.notna(x))
-            return q in texto
-
-        filtered_view = filtered_view[filtered_view.apply(match_any, axis=1)]
-
-    if order_by in filtered_view.columns:
-        filtered_view = filtered_view.sort_values(order_by, ascending=order_asc)
-
-    # ============================================================
-    #               RESUMEN + TABLA / TARJETAS
-    # ============================================================
-
-    st.markdown("---")
-    st.markdown("## 📈 Resumen de resultados (con filtros + búsqueda)")
+    st.markdown("## 📈 Resumen de resultados")
 
     col1, col2, col3 = st.columns(3)
     with col1:
-        st.metric("Películas filtradas", len(filtered_view))
+        st.metric("Películas tras filtros + búsqueda", len(filtered_view))
     with col2:
         if "Your Rating" in filtered_view.columns and filtered_view["Your Rating"].notna().any():
             st.metric("Promedio de tu nota", f"{filtered_view['Your Rating'].mean():.2f}")
@@ -930,7 +884,7 @@ with tab_catalog:
         else:
             st.metric("Promedio IMDb", "N/A")
 
-    st.markdown("### 📚 Resultados (tabla o tarjetas)")
+    st.markdown("### 📚 Tabla de resultados")
 
     cols_to_show = [
         c for c in ["Title", "Year", "Your Rating", "IMDb Rating",
@@ -965,70 +919,167 @@ with tab_catalog:
         )
     )
 
-    view_mode = st.radio(
-        "Modo de vista",
-        ["Tabla", "Tarjetas (grid)"],
-        horizontal=True
+    st.dataframe(
+        styled_table,
+        use_container_width=True,
+        hide_index=True
     )
 
-    if view_mode == "Tabla":
-        st.dataframe(
-            styled_table,
-            use_container_width=True,
-            hide_index=True
-        )
-    else:
-        if table_df.empty:
-            st.info("No hay resultados para mostrar en modo tarjetas.")
-        else:
-            st.markdown("Mostrando resultados como tarjetas:")
-            num_cols = 4
-            cols_cards = st.columns(num_cols)
-            cards_df = table_df.copy()
+    # ============================================================
+    #                 MODO NETFLIX / RESULTADOS
+    # ============================================================
 
-            for i, (_, row) in enumerate(cards_df.iterrows()):
-                col = cols_cards[i % num_cols]
+    st.markdown("---")
+    st.markdown("## 🎞 Modo Netflix: pósters + detalles")
+
+    if filtered_view.empty:
+        st.info("No hay resultados bajo los filtros y la búsqueda actual.")
+    else:
+        # elegimos base para el modo Netflix
+        netflix_df = filtered_view.copy()
+
+        # si no hay búsqueda, priorizamos tus favoritas
+        if not search_query:
+            if "Your Rating" in netflix_df.columns:
+                netflix_df = netflix_df.sort_values(
+                    ["Your Rating", "Year"],
+                    ascending=[False, True]
+                )
+        else:
+            # con búsqueda no reordenamos demasiado; ya se ordenó antes
+            pass
+
+        netflix_df = netflix_df.head(max_netflix_items)
+
+        st.write(
+            f"Mostrando hasta {len(netflix_df)} películas en modo Netflix "
+            f"{'(con detalles completos de premios y streaming)' if search_query else '(vista rápida)'}."
+        )
+
+        cols = st.columns(4)
+
+        for i, (_, row) in enumerate(netflix_df.iterrows()):
+            col = cols[i % 4]
+            with col:
                 titulo = row.get("Title", "Sin título")
                 year = row.get("Year", "")
-                year_str = fmt_year(year) if "Year" in cards_df.columns else ""
-                your_rating = row.get("Your Rating", None)
-                imdb_rating = row.get("IMDb Rating", None)
+                nota = row.get("Your Rating", "")
+                imdb_rating = row.get("IMDb Rating", "")
                 genres = row.get("Genres", "")
                 directors = row.get("Directors", "")
                 url = row.get("URL", "")
 
-                base_rating = your_rating if your_rating is not None and not pd.isna(your_rating) else imdb_rating
+                base_rating = nota if pd.notna(nota) else imdb_rating
                 border_color, glow_color = get_rating_colors(base_rating)
 
-                your_str = fmt_rating(your_rating) if your_rating is not None else ""
-                imdb_str = fmt_rating(imdb_rating) if imdb_rating is not None else ""
+                poster_url = get_poster_url(titulo, year)
+                if isinstance(poster_url, str) and poster_url:
+                    st.image(poster_url)
+                else:
+                    st.write("Sin póster")
 
-                card_html = f"""
+                # información básica
+                year_str = f" ({int(year)})" if pd.notna(year) else ""
+                nota_str = f"⭐ Tu nota: {fmt_rating(nota)}" if pd.notna(nota) else ""
+                imdb_str = f"IMDb: {fmt_rating(imdb_rating)}" if pd.notna(imdb_rating) else ""
+
+                extra_html = ""
+
+                # si hay búsqueda, traemos premios + streaming + TMDb
+                if search_query:
+                    awards = get_omdb_awards(titulo, year)
+                    tmdb_rating = get_tmdb_vote_average(titulo, year)
+                    availability = get_streaming_availability(
+                        titulo,
+                        year,
+                        country="CL"
+                    )
+
+                    tmdb_str = (
+                        f"TMDb: {fmt_rating(tmdb_rating)}"
+                        if tmdb_rating is not None else "TMDb: N/A"
+                    )
+
+                    # premios
+                    if awards is None:
+                        awards_text = "Sin datos de premios (OMDb)"
+                    elif isinstance(awards, dict) and "error" in awards:
+                        awards_text = f"Error OMDb: {awards['error']}"
+                    else:
+                        parts = []
+                        if awards.get("oscars", 0):
+                            parts.append(f"🏆 {awards['oscars']} Oscar(s)")
+                        if awards.get("emmys", 0):
+                            parts.append(f"📺 {awards['emmys']} Emmy(s)")
+                        if awards.get("baftas", 0):
+                            parts.append(f"🎭 {awards['baftas']} BAFTA(s)")
+                        if awards.get("golden_globes", 0):
+                            parts.append(f"🌐 {awards['golden_globes']} Globo(s) de Oro")
+                        if awards.get("palme_dor", False):
+                            parts.append("🌴 Palma de Oro")
+
+                        if not parts:
+                            awards_text = "Sin grandes premios detectados."
+                        else:
+                            awards_text = " · ".join(parts)
+
+                        if awards.get("raw"):
+                            awards_text += (
+                                f"<br><span style='font-size:0.75rem;color:#9ca3af;'>"
+                                f"OMDb: {awards['raw']}</span>"
+                            )
+
+                    # streaming
+                    if availability is None:
+                        platforms = []
+                        link = None
+                    else:
+                        platforms = availability.get("platforms") or []
+                        link = availability.get("link")
+
+                    platforms_str = ", ".join(platforms) if platforms else "Sin datos para Chile (CL)"
+                    link_html = (
+                        f'<a href="{link}" target="_blank">Ver streaming en TMDb (CL)</a>'
+                        if link else "Sin enlace de streaming disponible"
+                    )
+
+                    extra_html = f"""
+                        {tmdb_str}<br>
+                        <b>Premios:</b> {awards_text}<br>
+                        <b>Streaming (CL):</b> {platforms_str}<br>
+                        {link_html}<br>
+                    """
+
+                imdb_link = f"[IMDb]({url})" if isinstance(url, str) and url.startswith("http") else ""
+
+                info_html = f"""
                 <div class="movie-card" style="
                     border-color: {border_color};
                     box-shadow:
                         0 0 0 1px rgba(15,23,42,0.9),
-                        0 0 22px {glow_color};
+                        0 0 20px {glow_color};
+                    padding: 10px 10px 8px 10px;
+                    margin-top: 8px;
                 ">
-                  <div class="movie-title">{titulo}{f" ({year_str})" if year_str else ""}</div>
+                  <div class="movie-title">{titulo}{year_str}</div>
                   <div class="movie-sub">
-                    {("⭐ Tu nota: " + your_str + "<br>") if your_str else ""}
-                    {("IMDb: " + imdb_str + "<br>") if imdb_str else ""}
-                    {("<b>Géneros:</b> " + genres + "<br>") if isinstance(genres, str) and genres else ""}
-                    {("<b>Director(es):</b> " + directors + "<br>") if isinstance(directors, str) and directors else ""}
-                    {f'<a href="{url}" target="_blank">Ver en IMDb</a>' if isinstance(url, str) and url.startswith("http") else ""}
+                    {nota_str}<br>
+                    {imdb_str}<br>
+                    {f"<b>Géneros:</b> {genres}<br>" if isinstance(genres, str) and genres else ""}
+                    {f"<b>Director(es):</b> {directors}<br>" if isinstance(directors, str) and directors else ""}
+                    {extra_html}
+                    {imdb_link}
                   </div>
                 </div>
                 """
-                with col:
-                    st.markdown(card_html, unsafe_allow_html=True)
+                st.markdown(info_html, unsafe_allow_html=True)
 
     # ============================================================
     #                        FAVORITAS
     # ============================================================
 
     st.markdown("---")
-    st.markdown("## ⭐ Tus favoritas (nota ≥ 9) en este contexto")
+    st.markdown("## ⭐ Tus favoritas (nota ≥ 9) con filtros + búsqueda")
 
     with st.expander("Ver favoritas", expanded=False):
         if "Your Rating" in filtered_view.columns:
@@ -1100,85 +1151,13 @@ with tab_catalog:
         else:
             st.write("No se encontró la columna 'Your Rating' en el CSV.")
 
-    # ============================================================
-    #                       GALERÍA
-    # ============================================================
-
-    st.markdown("---")
-    st.markdown("## 🎞 Galería de pósters (resultados actuales)")
-
-    with st.expander("Ver galería de pósters", expanded=False):
-        if show_gallery:
-            if TMDB_API_KEY is None:
-                st.warning("No hay TMDB_API_KEY configurada en Secrets, no puedo cargar pósters.")
-            elif filtered_view.empty:
-                st.info("No hay resultados con los filtros y la búsqueda actual.")
-            else:
-                gal = filtered_view.copy()
-
-                if "Your Rating" in gal.columns:
-                    gal = gal.sort_values(
-                        ["Your Rating", "Year"],
-                        ascending=[False, True]
-                    )
-
-                gal = gal.head(24)
-
-                st.write(f"Mostrando hasta {len(gal)} pósters de las películas actuales.")
-
-                cols = st.columns(4)
-
-                for i, (_, row) in enumerate(gal.iterrows()):
-                    col = cols[i % 4]
-                    with col:
-                        titulo = row.get("Title", "Sin título")
-                        year = row.get("Year", "")
-                        nota = row.get("Your Rating", "")
-                        imdb_rating = row.get("IMDb Rating", "")
-                        url = row.get("URL", "")
-
-                        base_rating = nota if pd.notna(nota) else imdb_rating
-                        border_color, glow_color = get_rating_colors(base_rating)
-
-                        poster_url = get_poster_url(titulo, year)
-                        if isinstance(poster_url, str) and poster_url:
-                            st.image(poster_url)
-                        else:
-                            st.write("Sin póster")
-
-                        year_str = f" ({int(year)})" if pd.notna(year) else ""
-                        nota_str = f"⭐ Tu nota: {fmt_rating(nota)}" if pd.notna(nota) else ""
-                        imdb_str = f"IMDb: {fmt_rating(imdb_rating)}" if pd.notna(imdb_rating) else ""
-                        imdb_link = f"[IMDb]({url})" if isinstance(url, str) and url.startswith("http") else ""
-
-                        info_html = f"""
-                        <div class="movie-card" style="
-                            border-color: {border_color};
-                            box-shadow:
-                                0 0 0 1px rgba(15,23,42,0.9),
-                                0 0 20px {glow_color};
-                            padding: 10px 10px 8px 10px;
-                            margin-top: 8px;
-                        ">
-                          <div class="movie-title">{titulo}{year_str}</div>
-                          <div class="movie-sub">
-                            {nota_str}<br>
-                            {imdb_str}<br>
-                            {imdb_link}
-                          </div>
-                        </div>
-                        """
-                        st.markdown(info_html, unsafe_allow_html=True)
-        else:
-            st.info("La galería está desactivada en las opciones de visualización.")
-
 
 # ============================================================
 #                     TAB 2: ANÁLISIS
 # ============================================================
 
 with tab_analysis:
-    st.markdown("## 📊 Análisis y tendencias (según filtros)")
+    st.markdown("## 📊 Análisis y tendencias (según filtros, sin búsqueda)")
 
     with st.expander("Ver análisis y tendencias", expanded=False):
         if filtered.empty:
@@ -1336,7 +1315,7 @@ with tab_analysis:
                             )
                             .properties(height=400)
                         )
-                        st.altair_chart(heat_df, use_container_width=True)
+                        st.altair_chart(heat_chart, use_container_width=True)
                     else:
                         st.write("No hay datos suficientes de géneros para el mapa de calor.")
                 else:
@@ -1844,7 +1823,7 @@ with tab_streaming:
     if TMDB_API_KEY is None:
         st.info("Sección de plataformas desactivada: falta configurar TMDB_API_KEY en Secrets.")
     else:
-        with st.expander("Consultar plataformas de streaming para tus resultados filtrados (Chile - CL)", expanded=False):
+        with st.expander("Consultar plataformas de streaming para tus resultados filtrados", expanded=False):
             if filtered.empty:
                 st.info("No hay resultados bajo los filtros actuales.")
             else:

@@ -1048,11 +1048,12 @@ with tab_catalog:
 
                     border_color, glow_color = get_rating_colors(nota)
 
+                    year_str = fmt_year(year)
                     etiqueta = f"{titulo}"
                     if pd.notna(nota):
                         etiqueta = f"{int(nota)}/10 — {titulo}"
-                    if pd.notna(year):
-                        etiqueta += f" ({int(year)})"
+                    if year_str:
+                        etiqueta += f" ({year_str})"
 
                     st.markdown(
                         f"""
@@ -1146,7 +1147,8 @@ with tab_catalog:
                         else:
                             st.write("Sin póster")
 
-                        year_str = f" ({int(year)})" if pd.notna(year) else ""
+                        year_str_num = fmt_year(year)
+                        year_str = f" ({year_str_num})" if year_str_num else ""
                         nota_str = f"⭐ Tu nota: {fmt_rating(nota)}" if pd.notna(nota) else ""
                         imdb_str = f"IMDb: {fmt_rating(imdb_rating)}" if pd.notna(imdb_rating) else ""
                         imdb_link = f"[IMDb]({url})" if isinstance(url, str) and url.startswith("http") else ""
@@ -1336,7 +1338,7 @@ with tab_analysis:
                             )
                             .properties(height=400)
                         )
-                        st.altair_chart(heat_df, use_container_width=True)
+                        st.altair_chart(heat_chart, use_container_width=True)
                     else:
                         st.write("No hay datos suficientes de géneros para el mapa de calor.")
                 else:
@@ -1540,6 +1542,9 @@ with tab_analysis:
                         diff_val = float(your_rating) - float(imdb_rating)
                         border_color, glow_color = get_rating_colors(your_rating)
 
+                        year_str_num = fmt_year(year)
+                        year_str = f" ({year_str_num})" if year_str_num else ""
+
                         st.markdown(
                             f"""
                             <div class="movie-card" style="
@@ -1550,7 +1555,7 @@ with tab_analysis:
                                 margin-bottom: 12px;
                             ">
                               <div class="movie-title">
-                                {titulo}{f" ({int(year)})" if pd.notna(year) else ""}
+                                {titulo}{year_str}
                               </div>
                               <div class="movie-sub">
                                 ⭐ Tu nota: {float(your_rating):.1f}<br>
@@ -1675,11 +1680,8 @@ with tab_awards:
                                 st.write("Sin póster")
 
                         with col_info:
-                            year_str = (
-                                f" ({int(year)})"
-                                if year is not None and not pd.isna(year)
-                                else ""
-                            )
+                            year_str_num = fmt_year(year) if year is not None else ""
+                            year_str = f" ({year_str_num})" if year_str_num else ""
                             your_str = (
                                 fmt_rating(your_rating)
                                 if your_rating is not None and pd.notna(your_rating)
@@ -1889,6 +1891,9 @@ with tab_streaming:
                         if link else "Sin enlace de streaming disponible"
                     )
 
+                    year_str_num = fmt_year(year) if year is not None else ""
+                    year_str = f" ({year_str_num})" if year_str_num else ""
+
                     st.markdown(
                         f"""
                         <div class="movie-card" style="
@@ -1899,7 +1904,7 @@ with tab_streaming:
                             margin-bottom: 10px;
                         ">
                           <div class="movie-title">
-                            {titulo}{f" ({int(year)})" if year is not None and not pd.isna(year) else ""}
+                            {titulo}{year_str}
                           </div>
                           <div class="movie-sub">
                             {f"⭐ Tu nota: {fmt_rating(your_rating)}<br>" if pd.notna(your_rating) else ""}
@@ -1978,6 +1983,8 @@ with tab_streaming:
                                     st.write("Sin póster")
 
                             with col_info:
+                                year_str_num = fmt_year(year)
+                                year_str = f" ({year_str_num})" if year_str_num else ""
                                 st.markdown(
                                     f"""
                                     <div class="movie-card" style="
@@ -1988,7 +1995,7 @@ with tab_streaming:
                                         margin-bottom: 16px;
                                     ">
                                       <div class="movie-title">
-                                        {titulo}{f" ({int(year)})" if pd.notna(year) else ""}
+                                        {titulo}{year_str}
                                       </div>
                                       <div class="movie-sub">
                                         {f"⭐ Tu nota: {fmt_rating(your_rating)}<br>" if pd.notna(your_rating) else ""}
@@ -2072,6 +2079,8 @@ with tab_streaming:
                         st.write("Sin póster")
 
                 with col_info:
+                    year_str_num = fmt_year(year)
+                    year_str = f" ({year_str_num})" if year_str_num else ""
                     st.markdown(
                         f"""
                         <div class="movie-card" style="
@@ -2082,7 +2091,7 @@ with tab_streaming:
                             margin-bottom: 10px;
                         ">
                           <div class="movie-title">
-                            {titulo}{f" ({int(year)})" if pd.notna(year) else ""}
+                            {titulo}{year_str}
                           </div>
                           <div class="movie-sub">
                             {f"⭐ Tu nota: {fmt_rating(nota)}<br>" if pd.notna(nota) else ""}

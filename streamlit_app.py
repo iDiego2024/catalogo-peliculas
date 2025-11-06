@@ -4,6 +4,7 @@ import requests
 import random
 import altair as alt
 import re
+from urllib.parse import quote_plus
 
 # ----------------- Configuración general -----------------
 
@@ -437,6 +438,39 @@ def get_omdb_awards(title, year=None):
     }
 
 
+@st.cache_data
+def compute_awards_table(df_basic):
+    """
+    Calcula tabla de premios (Oscars, Palma de Oro, etc.) para un subconjunto de pelis.
+    df_basic debe tener columnas Title y Year.
+    """
+    rows = []
+    for _, r in df_basic.iterrows():
+        title = r.get("Title")
+        year = r.get("Year")
+        awards = get_omdb_awards(title, year)
+        if not isinstance(awards, dict) or "error" in awards:
+            continue
+        rows.append({
+            "Title": title,
+            "Year": year,
+            "oscars": awards.get("oscars", 0),
+            "oscars_nominated": awards.get("oscars_nominated", 0),
+            "total_wins": awards.get("total_wins", 0),
+            "total_nominations": awards.get("total_nominations", 0),
+            "palme_dor": awards.get("palme_dor", False),
+            "raw": awards.get("raw"),
+        })
+    if not rows:
+        return pd.DataFrame(
+            columns=[
+                "Title", "Year", "oscars", "oscars_nominated",
+                "total_wins", "total_nominations", "palme_dor", "raw"
+            ]
+        )
+    return pd.DataFrame(rows)
+
+
 def get_rating_colors(rating):
     try:
         r = float(rating)
@@ -453,6 +487,18 @@ def get_rating_colors(rating):
         return ("#eab308", "rgba(234,179,8,0.45)")
     else:
         return ("#f97316", "rgba(249,115,22,0.45)")
+
+
+def get_spanish_review_link(title, year=None):
+    if not title or pd.isna(title):
+        return None
+    q = f"reseña película {title}"
+    try:
+        if year is not None and not pd.isna(year):
+            q += f" {int(float(year))}"
+    except Exception:
+        pass
+    return "https://www.google.com/search?q=" + quote_plus(q)
 
 
 # ----------------- Carga de datos -----------------
@@ -649,7 +695,7 @@ show_posters_fav = st.sidebar.checkbox(
     value=True
 )
 max_netflix_items = st.sidebar.slider(
-    "Máx. películas en modo Netflix",
+    "Máx. películas en tarjetas de detalle",
     min_value=4, max_value=20, value=8, step=1
 )
 
@@ -853,35 +899,34 @@ with tab_catalog:
         mime="text/csv",
     )
 
-    # Selector de detalle
+    # Selector de detalle asociado a la tabla
     if not filtered_view.empty:
         opciones_detalle = ["(ninguna)"] + [
             f"{row['Title']} ({fmt_year(row['Year'])})"
             for _, row in filtered_view.iterrows()
         ]
         seleccion = st.selectbox(
-            "Ver detalle de una película específica (además de la búsqueda):",
+            "Selecciona una película de la tabla para ver su ficha abajo:",
             opciones_detalle,
             index=0
         )
         if seleccion != "(ninguna)":
-            # extraer título
             titulo_sel = seleccion.rsplit(" (", 1)[0]
             detail_title = titulo_sel
 
     # ============================================================
-    #                 MODO NETFLIX / RESULTADOS
+    #              DETALLE DE PELÍCULAS (TARJETAS)
     # ============================================================
 
     st.markdown("---")
-    st.markdown("## 🎞 Modo Netflix: pósters + detalles completos")
+    st.markdown("## 🎞 Detalle de películas: pósters + información completa")
 
     if filtered_view.empty:
         st.info("No hay resultados bajo los filtros y la búsqueda actual.")
     else:
         netflix_df = filtered_view.copy()
 
-        # Si selecciono una película en el selector, filtro solo esa
+        # Si selecciono una película en el selector, muestro solo esa
         if detail_title:
             netflix_df = netflix_df[
                 netflix_df["Title"].astype(str) == detail_title
@@ -897,7 +942,7 @@ with tab_catalog:
         netflix_df = netflix_df.head(max_netflix_items)
 
         st.write(
-            f"Mostrando hasta {len(netflix_df)} películas en modo Netflix "
+            f"Mostrando hasta {len(netflix_df)} películas en tarjetas de detalle "
             f"con mi nota, IMDb, TMDb, premios y streaming en Chile."
         )
 
@@ -1007,6 +1052,12 @@ with tab_catalog:
                     else ""
                 )
 
+                reseñas_url = get_spanish_review_link(titulo, year)
+                reseñas_html = (
+                    f'<a href="{reseñas_url}" target="_blank">Reseñas en español</a>'
+                    if reseñas_url else ""
+                )
+
                 info_html = f"""
                 <div class="movie-card" style="
                     border-color: {border_color};
@@ -1026,7 +1077,8 @@ with tab_catalog:
                     <b>Premios:</b> {awards_text}<br>
                     <b>Streaming (CL):</b> {platforms_str}<br>
                     {link_html}<br>
-                    {imdb_link_html}
+                    {imdb_link_html}<br>
+                    <b>Reseñas:</b> {reseñas_html}
                   </div>
                 </div>
                 """
@@ -1100,6 +1152,9 @@ with tab_catalog:
                             st.write(f"**IMDb:** {fmt_rating(imdb_rating)}")
                         if isinstance(url, str) and url.startswith("http"):
                             st.write(f"[Ver en IMDb]({url})")
+                        reseñas_url = get_spanish_review_link(titulo, year)
+                        if reseñas_url:
+                            st.write(f"[Reseñas en español]({reseñas_url})")
 
                     st.markdown(
                         "</div></div>",
@@ -1477,6 +1532,11 @@ with tab_analysis:
 
                         diff_val = float(my_rating) - float(imdb_rating)
                         border_color, glow_color = get_rating_colors(my_rating)
+                        reseñas_url = get_spanish_review_link(titulo, year)
+                        reseñas_html = (
+                            f'<a href="{reseñas_url}" target="_blank">Reseñas en español</a>'
+                            if reseñas_url else ""
+                        )
 
                         st.markdown(
                             f"""
@@ -1495,7 +1555,8 @@ with tab_analysis:
                                 IMDb: {float(imdb_rating):.1f}<br>
                                 Diferencia (Mi − IMDb): {diff_val:.1f}<br>
                                 {("<b>Géneros:</b> " + genres + "<br>") if isinstance(genres, str) and genres else ""}
-                                {f'<a href="{url}" target="_blank">Ver en IMDb</a>' if isinstance(url, str) and url.startswith("http") else ""}
+                                {f'<a href="{url}" target="_blank">Ver en IMDb</a>' if isinstance(url, str) and url.startswith("http") else ""}<br>
+                                <b>Reseñas:</b> {reseñas_html}
                               </div>
                             </div>
                             """,
@@ -1503,6 +1564,76 @@ with tab_analysis:
                         )
         else:
             st.write("Faltan columnas 'Your Rating' o 'IMDb Rating' para este análisis.")
+
+    # ============================================================
+    #           ESTADÍSTICAS DE PREMIOS (OSCARS, PALMA, ETC.)
+    # ============================================================
+
+    st.markdown("---")
+    st.markdown("## 🏆 Estadísticas de premios (Oscars, Palma de Oro, etc.)")
+
+    with st.expander("Ver estadísticas de premios basadas en OMDb", expanded=False):
+        if not show_awards:
+            st.info("Activa 'Consultar premios en OMDb' en la barra lateral para usar esta sección.")
+        elif filtered.empty:
+            st.info("No hay datos bajo los filtros actuales.")
+        else:
+            if st.button("Calcular estadísticas de premios para las películas filtradas"):
+                awards_stats_df = compute_awards_table(filtered[["Title", "Year"]])
+                if awards_stats_df.empty:
+                    st.write("No se pudieron obtener datos de premios para estas películas.")
+                else:
+                    st.markdown("### Películas con más Oscars / premios totales")
+                    top_oscars = awards_stats_df.sort_values(
+                        ["oscars", "total_wins", "total_nominations"],
+                        ascending=[False, False, False]
+                    )
+                    show_top = top_oscars.head(30).copy()
+                    show_top["Year"] = show_top["Year"].apply(fmt_year)
+                    show_top = show_top.rename(
+                        columns={
+                            "Title": "Película",
+                            "Year": "Año",
+                            "oscars": "Oscars ganados",
+                            "oscars_nominated": "Nominaciones al Oscar",
+                            "total_wins": "Premios totales",
+                            "total_nominations": "Nominaciones totales",
+                            "palme_dor": "Palma de Oro",
+                        }
+                    )
+                    st.dataframe(show_top.drop(columns=["raw"]), hide_index=True, use_container_width=True)
+
+                    palme = awards_stats_df[awards_stats_df["palme_dor"]].copy()
+                    if not palme.empty:
+                        palme["Year"] = palme["Year"].apply(fmt_year)
+                        palme = palme.rename(
+                            columns={
+                                "Title": "Película",
+                                "Year": "Año",
+                                "oscars": "Oscars ganados",
+                                "total_wins": "Premios totales",
+                            }
+                        )
+                        st.markdown("### Películas con Palma de Oro")
+                        st.dataframe(
+                            palme[["Película", "Año", "Oscars ganados", "Premios totales"]],
+                            hide_index=True,
+                            use_container_width=True
+                        )
+                    else:
+                        st.write("Ninguna de las películas filtradas aparece con Palma de Oro en OMDb.")
+
+                    st.markdown("### Texto original de premios (OMDb)")
+                    raw_df = awards_stats_df[["Title", "Year", "raw"]].copy()
+                    raw_df["Year"] = raw_df["Year"].apply(fmt_year)
+                    raw_df = raw_df.rename(
+                        columns={
+                            "Title": "Película",
+                            "Year": "Año",
+                            "raw": "Premios (texto OMDb)"
+                        }
+                    )
+                    st.dataframe(raw_df, hide_index=True, use_container_width=True)
 
 
 # ============================================================
@@ -1765,6 +1896,12 @@ with tab_what:
                     else ""
                 )
 
+                reseñas_url = get_spanish_review_link(titulo, year)
+                reseñas_html = (
+                    f'<a href="{reseñas_url}" target="_blank">Reseñas en español</a>'
+                    if reseñas_url else ""
+                )
+
                 col_img, col_info = st.columns([1, 3])
 
                 with col_img:
@@ -1795,7 +1932,8 @@ with tab_what:
                             <b>Premios:</b> {awards_text}<br>
                             <b>Streaming (CL):</b> {platforms_str}<br>
                             {link_html}<br>
-                            {imdb_link_html}
+                            {imdb_link_html}<br>
+                            <b>Reseñas:</b> {reseñas_html}
                           </div>
                         </div>
                         """,

@@ -1068,7 +1068,11 @@ with tab_catalog:
                         {link_html}<br>
                     """
 
-                imdb_link = f"[IMDb]({url})" if isinstance(url, str) and url.startswith("http") else ""
+                imdb_link = (
+                    f'<a href="{url}" target="_blank">Ver en IMDb</a>'
+                    if isinstance(url, str) and url.startswith("http")
+                    else ""
+                )
 
                 info_html = f"""
                 <div class="movie-card" style="

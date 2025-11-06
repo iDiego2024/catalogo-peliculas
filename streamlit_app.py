@@ -769,7 +769,7 @@ else:
 all_genres = sorted(
     set(
         g
-        for sub in df["GenreList"].dropna()
+        for sub in df.get("GenreList", pd.Series([])).dropna()
         for g in sub
         if g
     )
@@ -908,7 +908,8 @@ with tab_catalog:
             st.metric("Promedio de tu nota", "N/A")
     with col3:
         if "IMDb Rating" in filtered_view.columns and filtered_view["IMDb Rating"].notna().any():
-            st.metric("Promedio IMDb", f"{filtered_view['IMDb Rating"].mean():.2f}")
+            mean_imdb = filtered_view["IMDb Rating"].mean()
+            st.metric("Promedio IMDb", f"{mean_imdb:.2f}")
         else:
             st.metric("Promedio IMDb", "N/A")
 
@@ -924,7 +925,6 @@ with tab_catalog:
 
     table_df = filtered_view[cols_to_show].copy()
 
-    # DataFrame para mostrar: formateamos columnas como texto
     display_df = table_df.copy()
 
     if "Year" in display_df.columns:
@@ -954,7 +954,6 @@ with tab_catalog:
     else:
         netflix_df = filtered_view.copy()
 
-        # si no hay búsqueda, priorizamos tus favoritas
         if not search_query:
             if "Your Rating" in netflix_df.columns:
                 netflix_df = netflix_df.sort_values(
@@ -997,7 +996,6 @@ with tab_catalog:
 
                 extra_html = ""
 
-                # si hay búsqueda, traemos premios + streaming + TMDb
                 if search_query:
                     awards = get_omdb_awards(titulo, year)
                     tmdb_rating = get_tmdb_vote_average(titulo, year)
@@ -1012,7 +1010,6 @@ with tab_catalog:
                         if tmdb_rating is not None else "TMDb: N/A"
                     )
 
-                    # premios
                     if awards is None:
                         awards_text = "Sin datos de premios (OMDb)"
                     elif isinstance(awards, dict) and "error" in awards:
@@ -1051,7 +1048,6 @@ with tab_catalog:
                                 f"OMDb: {awards['raw']}</span>"
                             )
 
-                    # streaming
                     if availability is None:
                         platforms = []
                         link = None

@@ -284,11 +284,10 @@ def get_omdb_awards(title, year=None):
 
     base_url = "http://www.omdbapi.com/"
 
-    # Normalizar un poco el título para OMDb (quitamos cosas entre paréntesis)
     raw_title = str(title).strip()
     simple_title = re.sub(r"\s*\(.*?\)\s*$", "", raw_title).strip()
 
-    year_int = None    # conversión segura de año
+    year_int = None
     try:
         if year is not None and not pd.isna(year):
             year_int = int(float(year))
@@ -309,7 +308,6 @@ def get_omdb_awards(title, year=None):
 
     data = None
 
-    # 1) Intento con título tal cual y simplificado
     for t in [raw_title, simple_title]:
         params = {"apikey": api_key, "t": t}
         if year_int:
@@ -318,7 +316,6 @@ def get_omdb_awards(title, year=None):
         if data:
             break
 
-    # 2) Si eso falla, búsqueda general y luego por imdbID
     if not data:
         params = {"apikey": api_key, "s": simple_title}
         if year_int:
@@ -342,12 +339,10 @@ def get_omdb_awards(title, year=None):
     oscars = 0
     emmys = 0
 
-    # Oscars ganados (ej: "Won 4 Oscars.")
     m_osc = re.search(r"won\s+(\d+)\s+oscars?", text_lower)
     if m_osc:
         oscars = int(m_osc.group(1))
 
-    # Emmys ganados
     for pat in [
         r"won\s+(\d+)\s+primetime\s+emmys?",
         r"won\s+(\d+)\s+emmys?",
@@ -370,7 +365,6 @@ def get_streaming_availability(title, year=None, country="US"):
     """
     Devuelve lista de plataformas de streaming para un título.
     Necesita STREAMING_API_KEY en st.secrets.
-    La implementación es genérica (Watchmode); adáptala si usas otro proveedor.
     """
     API_KEY = st.secrets.get("STREAMING_API_KEY", None)
     if API_KEY is None:
@@ -1314,105 +1308,6 @@ with st.expander("Ver progreso en la lista AFI 100", expanded=True):
         hide_index=True,
         use_container_width=True
     )
-
-# ============================================================
-#                   VISTA FESTIVAL — OMDb (Oscars / Emmys)
-# ============================================================
-
-st.markdown("---")
-st.markdown("## 🏆 Vista Festival — Oscars y Emmys (online)")
-
-with st.expander("Consultar premios vía OMDb (Oscars / Emmys)", expanded=False):
-    if st.secrets.get("OMDB_API_KEY", None) is None:
-        st.info(
-            "Para usar esta sección, añade `OMDB_API_KEY` a tus secrets de Streamlit "
-            "(puedes conseguir una API key gratuita en omdbapi.com)."
-        )
-    elif filtered.empty:
-        st.info("No hay resultados bajo los filtros actuales.")
-    else:
-        max_items = st.slider(
-            "Máximo de películas a comprobar en OMDb",
-            min_value=5,
-            max_value=40,
-            value=12,
-            step=1,
-            key="vista_festival_max",
-        )
-
-        subset = filtered.head(max_items)
-        showed_any = False
-
-        for _, row in subset.iterrows():
-            titulo = row.get("Title", "Sin título")
-            year = row.get("Year", None)
-            your_rating = row.get("Your Rating", None)
-            imdb_rating = row.get("IMDb Rating", None)
-            url = row.get("URL", "")
-
-            info = get_omdb_awards(titulo, year)
-            if not info:
-                continue
-
-            oscars = info.get("oscars", 0)
-            emmys = info.get("emmys", 0)
-            raw = info.get("raw", None)
-
-            # Si no hay Oscars ni Emmys y tampoco texto de premios, saltamos
-            if oscars == 0 and emmys == 0 and not raw:
-                continue
-
-            showed_any = True
-
-            base_rating = your_rating if pd.notna(your_rating) else imdb_rating
-            border_color, glow_color = get_rating_colors(base_rating)
-
-            badges = []
-            if oscars:
-                plural = "Oscar" if oscars == 1 else "Oscars"
-                badges.append(f"🏆 {oscars} {plural}")
-            if emmys:
-                plural_e = "Emmy" if emmys == 1 else "Emmys"
-                badges.append(f"📺 {emmys} {plural_e}")
-
-            badges_str = " · ".join(badges) if badges else "Premios detectados (sin detalle)."
-
-            extra_text = (
-                f"<br><span style='opacity:0.75;font-size:0.75rem;'>"
-                f"Texto OMDb: {raw}</span>"
-                if raw
-                else ""
-            )
-
-            st.markdown(
-                f"""
-                <div class="movie-card" style="
-                    border-color: {border_color};
-                    box-shadow:
-                        0 0 0 1px rgba(15,23,42,0.9),
-                        0 0 26px {glow_color};
-                    margin-bottom: 12px;
-                ">
-                  <div class="movie-title">
-                    {titulo}{f" ({int(year)})" if year is not None and not pd.isna(year) else ""}
-                  </div>
-                  <div class="movie-sub">
-                    {f"⭐ Tu nota: {fmt_rating(your_rating)}<br>" if pd.notna(your_rating) else ""}
-                    {f"IMDb: {fmt_rating(imdb_rating)}<br>" if pd.notna(imdb_rating) else ""}
-                    <b>Oscars / Emmys:</b> {badges_str}
-                    {extra_text}<br>
-                    {f'<a href="{url}" target="_blank">Ver en IMDb</a>' if isinstance(url, str) and url.startswith("http") else ""}
-                  </div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-
-        if not showed_any:
-            st.write(
-                "No encontré Oscars ni Emmys (ni texto de premios) en OMDb para las películas revisadas "
-                f"(límite: {max_items} películas)."
-            )
 
 # ============================================================
 #                  DÓNDE VERLAS (PLATAFORMAS)

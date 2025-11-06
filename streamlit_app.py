@@ -278,6 +278,9 @@ def get_omdb_awards(title, year=None):
     - baftas: nº de BAFTA ganados (aprox)
     - golden_globes: nº de Globos de Oro ganados (aprox)
     - palme_dor: True si detecta Palma de Oro en el texto
+    - oscars_nominated: nº de nominaciones al Oscar
+    - total_wins: nº de premios totales
+    - total_nominations: nº de nominaciones totales
     - error: texto de error de OMDb si lo hay
     """
     api_key = st.secrets.get("OMDB_API_KEY", None)
@@ -359,6 +362,9 @@ def get_omdb_awards(title, year=None):
             "baftas": 0,
             "golden_globes": 0,
             "palme_dor": False,
+            "oscars_nominated": 0,
+            "total_wins": 0,
+            "total_nominations": 0,
         }
 
     text_lower = awards_str.lower()
@@ -368,6 +374,9 @@ def get_omdb_awards(title, year=None):
     baftas = 0
     golden_globes = 0
     palme_dor = False
+    oscars_nominated = 0
+    total_wins = 0
+    total_nominations = 0
 
     # Oscars ganados
     m_osc = re.search(r"won\s+(\d+)\s+oscars?", text_lower)
@@ -375,6 +384,13 @@ def get_omdb_awards(title, year=None):
         m_osc = re.search(r"won\s+(\d+)\s+oscar\b", text_lower)
     if m_osc:
         oscars = int(m_osc.group(1))
+
+    # Oscars nominaciones
+    m_osc_nom = re.search(r"nominated\s+for\s+(\d+)\s+oscars?", text_lower)
+    if not m_osc_nom:
+        m_osc_nom = re.search(r"nominated\s+for\s+(\d+)\s+oscar\b", text_lower)
+    if m_osc_nom:
+        oscars_nominated = int(m_osc_nom.group(1))
 
     # Emmys ganados
     for pat in [
@@ -407,6 +423,15 @@ def get_omdb_awards(title, year=None):
     if re.search(r"palme\s+d['’]or", text_lower):
         palme_dor = True
 
+    # Totales genéricos de wins / nominations (del estilo "9 wins & 8 nominations total")
+    m_wins = re.search(r"(\d+)\s+wins?", text_lower)
+    if m_wins:
+        total_wins = int(m_wins.group(1))
+
+    m_noms = re.search(r"(\d+)\s+nominations?", text_lower)
+    if m_noms:
+        total_nominations = int(m_noms.group(1))
+
     return {
         "raw": awards_str,
         "oscars": oscars,
@@ -414,6 +439,9 @@ def get_omdb_awards(title, year=None):
         "baftas": baftas,
         "golden_globes": golden_globes,
         "palme_dor": palme_dor,
+        "oscars_nominated": oscars_nominated,
+        "total_wins": total_wins,
+        "total_nominations": total_nominations,
     }
 
 
@@ -880,7 +908,7 @@ with tab_catalog:
             st.metric("Promedio de tu nota", "N/A")
     with col3:
         if "IMDb Rating" in filtered_view.columns and filtered_view["IMDb Rating"].notna().any():
-            st.metric("Promedio IMDb", f"{filtered_view['IMDb Rating'].mean():.2f}")
+            st.metric("Promedio IMDb", f"{filtered_view['IMDb Rating"].mean():.2f}")
         else:
             st.metric("Promedio IMDb", "N/A")
 
@@ -984,45 +1012,44 @@ with tab_catalog:
                         if tmdb_rating is not None else "TMDb: N/A"
                     )
 
-# premios
-if awards is None:
-    awards_text = "Sin datos de premios (OMDb)"
-elif isinstance(awards, dict) and "error" in awards:
-    awards_text = f"Error OMDb: {awards['error']}"
-else:
-    base_parts = []
-    if awards.get("oscars", 0):
-        base_parts.append(f"🏆 {awards['oscars']} Oscar(s)")
-    if awards.get("emmys", 0):
-        base_parts.append(f"📺 {awards['emmys']} Emmy(s)")
-    if awards.get("baftas", 0):
-        base_parts.append(f"🎭 {awards['baftas']} BAFTA(s)")
-    if awards.get("golden_globes", 0):
-        base_parts.append(f"🌐 {awards['golden_globes']} Globo(s) de Oro")
-    if awards.get("palme_dor", False):
-        base_parts.append("🌴 Palma de Oro")
+                    # premios
+                    if awards is None:
+                        awards_text = "Sin datos de premios (OMDb)"
+                    elif isinstance(awards, dict) and "error" in awards:
+                        awards_text = f"Error OMDb: {awards['error']}"
+                    else:
+                        base_parts = []
+                        if awards.get("oscars", 0):
+                            base_parts.append(f"🏆 {awards['oscars']} Oscar(s)")
+                        if awards.get("emmys", 0):
+                            base_parts.append(f"📺 {awards['emmys']} Emmy(s)")
+                        if awards.get("baftas", 0):
+                            base_parts.append(f"🎭 {awards['baftas']} BAFTA(s)")
+                        if awards.get("golden_globes", 0):
+                            base_parts.append(f"🌐 {awards['golden_globes']} Globo(s) de Oro")
+                        if awards.get("palme_dor", False):
+                            base_parts.append("🌴 Palma de Oro")
 
-    extra_parts = []
-    if awards.get("oscars_nominated", 0):
-        extra_parts.append(f"🎬 Nominada a {awards['oscars_nominated']} Oscar(s)")
-    if awards.get("total_wins", 0):
-        extra_parts.append(f"{awards['total_wins']} premios totales")
-    if awards.get("total_nominations", 0):
-        extra_parts.append(f"{awards['total_nominations']} nominaciones totales")
+                        extra_parts = []
+                        if awards.get("oscars_nominated", 0):
+                            extra_parts.append(f"🎬 Nominada a {awards['oscars_nominated']} Oscar(s)")
+                        if awards.get("total_wins", 0):
+                            extra_parts.append(f"{awards['total_wins']} premios totales")
+                        if awards.get("total_nominations", 0):
+                            extra_parts.append(f"{awards['total_nominations']} nominaciones totales")
 
-    parts = base_parts + extra_parts
+                        parts = base_parts + extra_parts
 
-    if not parts:
-        awards_text = "Sin información destacada de premios."
-    else:
-        awards_text = " · ".join(parts)
+                        if not parts:
+                            awards_text = "Sin información destacada de premios."
+                        else:
+                            awards_text = " · ".join(parts)
 
-    if awards.get("raw"):
-        awards_text += (
-            f"<br><span style='font-size:0.75rem;color:#9ca3af;'>"
-            f"OMDb: {awards['raw']}</span>"
-        )
-
+                        if awards.get("raw"):
+                            awards_text += (
+                                f"<br><span style='font-size:0.75rem;color:#9ca3af;'>"
+                                f"OMDb: {awards['raw']}</span>"
+                            )
 
                     # streaming
                     if availability is None:
@@ -1610,32 +1637,38 @@ with tab_awards:
                         elif isinstance(awards, dict) and "error" in awards:
                             awards_text = f"Error al consultar OMDb: {awards['error']}"
                         else:
-                            parts = []
+                            base_parts = []
                             if awards.get("oscars", 0):
-                                parts.append(f"🏆 {awards['oscars']} Oscar(s)")
+                                base_parts.append(f"🏆 {awards['oscars']} Oscar(s)")
                             if awards.get("emmys", 0):
-                                parts.append(f"📺 {awards['emmys']} Emmy(s)")
+                                base_parts.append(f"📺 {awards['emmys']} Emmy(s)")
                             if awards.get("baftas", 0):
-                                parts.append(f"🎭 {awards['baftas']} BAFTA(s)")
+                                base_parts.append(f"🎭 {awards['baftas']} BAFTA(s)")
                             if awards.get("golden_globes", 0):
-                                parts.append(f"🌐 {awards['golden_globes']} Globo(s) de Oro")
+                                base_parts.append(f"🌐 {awards['golden_globes']} Globo(s) de Oro")
                             if awards.get("palme_dor", False):
-                                parts.append("🌴 Palma de Oro en Cannes")
+                                base_parts.append("🌴 Palma de Oro en Cannes")
+
+                            extra_parts = []
+                            if awards.get("oscars_nominated", 0):
+                                extra_parts.append(f"🎬 Nominada a {awards['oscars_nominated']} Oscar(s)")
+                            if awards.get("total_wins", 0):
+                                extra_parts.append(f"{awards['total_wins']} premios totales")
+                            if awards.get("total_nominations", 0):
+                                extra_parts.append(f"{awards['total_nominations']} nominaciones totales")
+
+                            parts = base_parts + extra_parts
 
                             if not parts:
                                 awards_text = "No se detectan grandes premios en el texto de OMDb."
-                                if awards.get("raw"):
-                                    awards_text += (
-                                        f"<br><span style='font-size:0.8rem;color:#9ca3af;'>"
-                                        f"OMDb: {awards['raw']}</span>"
-                                    )
                             else:
                                 awards_text = " · ".join(parts)
-                                if awards.get("raw"):
-                                    awards_text += (
-                                        f"<br><span style='font-size:0.8rem;color:#9ca3af;'>"
-                                        f"OMDb: {awards['raw']}</span>"
-                                    )
+
+                            if awards.get("raw"):
+                                awards_text += (
+                                    f"<br><span style='font-size:0.8rem;color:#9ca3af;'>"
+                                    f"OMDb: {awards['raw']}</span>"
+                                )
 
                         base_rating = your_rating if pd.notna(your_rating) else imdb_rating
                         border_color, glow_color = get_rating_colors(base_rating)

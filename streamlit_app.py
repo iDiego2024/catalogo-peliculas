@@ -14,9 +14,9 @@ st.set_page_config(
 )
 
 st.title("🎥 Mi catálogo de películas (IMDb)")
-st.write(
-    "App basada en mi export de IMDb. "
-    "Una sola búsqueda central, filtros en la barra lateral y vista tipo Netflix con premios y streaming."
+# st.write(
+#   "App basada en mi export de IMDb. "
+#  "Una sola búsqueda central, filtros en la barra lateral y vista tipo Netflix con premios y streaming."
 )
 
 # ----------------- Config TMDb -----------------

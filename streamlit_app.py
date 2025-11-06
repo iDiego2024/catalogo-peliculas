@@ -1623,6 +1623,119 @@ with tab_analysis:
                     else:
                         st.write("Ninguna de las películas filtradas aparece con Palma de Oro en OMDb.")
 
+                    # Cruce de premios con tus gustos
+                    merged = awards_stats_df.merge(
+                        df[["Title", "Year", "Your Rating", "IMDb Rating"]],
+                        on=["Title", "Year"],
+                        how="left"
+                    )
+
+                    st.markdown("### 🎯 Cómo me llevo con los premios")
+
+                    # Palma de Oro que amas
+                    loved_palme = merged[
+                        (merged["palme_dor"]) &
+                        (merged["Your Rating"].notna()) &
+                        (merged["Your Rating"] >= 8)
+                    ].copy()
+
+                    if not loved_palme.empty:
+                        loved_palme["Year"] = loved_palme["Year"].apply(fmt_year)
+                        loved_palme["Mi nota"] = loved_palme["Your Rating"].apply(fmt_rating)
+                        loved_palme["IMDb"] = loved_palme["IMDb Rating"].apply(fmt_rating)
+                        loved_palme = loved_palme.sort_values("Your Rating", ascending=False)
+                        st.markdown("#### 🌴 Palmas de Oro que amo (mi nota ≥ 8)")
+                        st.dataframe(
+                            loved_palme[["Title", "Year", "Mi nota", "IMDb", "oscars", "total_wins"]].rename(
+                                columns={
+                                    "Title": "Película",
+                                    "Year": "Año",
+                                    "oscars": "Oscars ganados",
+                                    "total_wins": "Premios totales",
+                                }
+                            ),
+                            hide_index=True,
+                            use_container_width=True
+                        )
+
+                    # Palma de Oro que no te convencieron
+                    disliked_palme = merged[
+                        (merged["palme_dor"]) &
+                        (merged["Your Rating"].notna()) &
+                        (merged["Your Rating"] <= 6)
+                    ].copy()
+
+                    if not disliked_palme.empty:
+                        disliked_palme["Year"] = disliked_palme["Year"].apply(fmt_year)
+                        disliked_palme["Mi nota"] = disliked_palme["Your Rating"].apply(fmt_rating)
+                        disliked_palme["IMDb"] = disliked_palme["IMDb Rating"].apply(fmt_rating)
+                        disliked_palme = disliked_palme.sort_values("Your Rating", ascending=True)
+                        st.markdown("#### 🌴 Palmas de Oro que no me convencieron (mi nota ≤ 6)")
+                        st.dataframe(
+                            disliked_palme[["Title", "Year", "Mi nota", "IMDb", "oscars", "total_wins"]].rename(
+                                columns={
+                                    "Title": "Película",
+                                    "Year": "Año",
+                                    "oscars": "Oscars ganados",
+                                    "total_wins": "Premios totales",
+                                }
+                            ),
+                            hide_index=True,
+                            use_container_width=True
+                        )
+
+                    # Grandes ganadoras de Oscar que amas
+                    loved_oscars = merged[
+                        (merged["oscars"] >= 3) &
+                        (merged["Your Rating"].notna()) &
+                        (merged["Your Rating"] >= 8)
+                    ].copy()
+
+                    if not loved_oscars.empty:
+                        loved_oscars["Year"] = loved_oscars["Year"].apply(fmt_year)
+                        loved_oscars["Mi nota"] = loved_oscars["Your Rating"].apply(fmt_rating)
+                        loved_oscars["IMDb"] = loved_oscars["IMDb Rating"].apply(fmt_rating)
+                        loved_oscars = loved_oscars.sort_values(["oscars", "Your Rating"], ascending=[False, False])
+                        st.markdown("#### 🏆 Grandes ganadoras de Oscar que amo (Oscars ≥ 3 y mi nota ≥ 8)")
+                        st.dataframe(
+                            loved_oscars[["Title", "Year", "Mi nota", "IMDb", "oscars", "total_wins"]].rename(
+                                columns={
+                                    "Title": "Película",
+                                    "Year": "Año",
+                                    "oscars": "Oscars ganados",
+                                    "total_wins": "Premios totales",
+                                }
+                            ),
+                            hide_index=True,
+                            use_container_width=True
+                        )
+
+                    # Grandes ganadoras de Oscar donde fuiste duro
+                    harsh_oscars = merged[
+                        (merged["oscars"] >= 3) &
+                        (merged["Your Rating"].notna()) &
+                        (merged["Your Rating"] <= 6)
+                    ].copy()
+
+                    if not harsh_oscars.empty:
+                        harsh_oscars["Year"] = harsh_oscars["Year"].apply(fmt_year)
+                        harsh_oscars["Mi nota"] = harsh_oscars["Your Rating"].apply(fmt_rating)
+                        harsh_oscars["IMDb"] = harsh_oscars["IMDb Rating"].apply(fmt_rating)
+                        harsh_oscars = harsh_oscars.sort_values("Your Rating", ascending=True)
+                        st.markdown("#### 🥊 Grandes ganadoras de Oscar donde fui duro (Oscars ≥ 3 y mi nota ≤ 6)")
+                        st.dataframe(
+                            harsh_oscars[["Title", "Year", "Mi nota", "IMDb", "oscars", "total_wins"]].rename(
+                                columns={
+                                    "Title": "Película",
+                                    "Year": "Año",
+                                    "oscars": "Oscars ganados",
+                                    "total_wins": "Premios totales",
+                                }
+                            ),
+                            hide_index=True,
+                            use_container_width=True
+                        )
+
                     st.markdown("### Texto original de premios (OMDb)")
                     raw_df = awards_stats_df[["Title", "Year", "raw"]].copy()
                     raw_df["Year"] = raw_df["Year"].apply(fmt_year)

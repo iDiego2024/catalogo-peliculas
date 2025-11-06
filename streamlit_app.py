@@ -176,6 +176,22 @@ def load_data(file_path_or_buffer):
     if "Date Rated" in df.columns:
         df["Date Rated"] = pd.to_datetime(df["Date Rated"], errors="coerce").dt.date
 
+    # Texto de búsqueda precomputado
+    search_cols = []
+    for c in ["Title", "Original Title", "Directors", "Genres", "Year", "Your Rating", "IMDb Rating"]:
+        if c in df.columns:
+            search_cols.append(c)
+
+    if search_cols:
+        df["SearchText"] = (
+            df[search_cols]
+            .astype(str)
+            .apply(lambda row: " ".join(row), axis=1)
+            .str.lower()
+        )
+    else:
+        df["SearchText"] = ""
+
     return df
 
 
@@ -189,7 +205,13 @@ def _coerce_year_for_tmdb(year):
 
 
 @st.cache_data
-def get_poster_url(title, year=None):
+def get_tmdb_basic_info(title, year=None):
+    """
+    Devuelve info básica TMDb en una sola búsqueda:
+    - id
+    - poster_url
+    - vote_average
+    """
     if TMDB_API_KEY is None:
         return None
     if not title or pd.isna(title):
@@ -203,44 +225,59 @@ def get_poster_url(title, year=None):
         params["year"] = year_int
 
     try:
-        r = requests.get(TMDB_SEARCH_URL, params=params, timeout=2)
+        r = requests.get(TMDB_SEARCH_URL, params=params, timeout=3)
         if r.status_code != 200:
             return None
         data = r.json()
         results = data.get("results", [])
         if not results:
             return None
-        poster_path = results[0].get("poster_path")
-        if not poster_path:
-            return None
-        return f"{TMDB_IMAGE_BASE}{poster_path}"
+
+        movie = results[0]
+        movie_id = movie.get("id")
+        poster_path = movie.get("poster_path")
+        vote_average = movie.get("vote_average")
+
+        return {
+            "id": movie_id,
+            "poster_url": f"{TMDB_IMAGE_BASE}{poster_path}" if poster_path else None,
+            "vote_average": vote_average,
+        }
     except Exception:
         return None
 
 
 @st.cache_data
-def get_tmdb_vote_average(title, year=None):
-    if TMDB_API_KEY is None:
+def get_tmdb_providers(tmdb_id, country="CL"):
+    """
+    Streaming desde TMDb watch/providers para un país (por id de TMDb).
+    """
+    if TMDB_API_KEY is None or not tmdb_id:
         return None
-    if not title or pd.isna(title):
-        return None
-
-    title = str(title).strip()
-    year_int = _coerce_year_for_tmdb(year)
-
-    params = {"api_key": TMDB_API_KEY, "query": title}
-    if year_int is not None:
-        params["year"] = year_int
 
     try:
-        r = requests.get(TMDB_SEARCH_URL, params=params, timeout=2)
-        if r.status_code != 200:
+        providers_url = f"https://api.themoviedb.org/3/movie/{tmdb_id}/watch/providers"
+        r2 = requests.get(providers_url, params={"api_key": TMDB_API_KEY}, timeout=4)
+        if r2.status_code != 200:
             return None
-        data = r.json()
-        results = data.get("results", [])
-        if not results:
+        pdata = r2.json()
+        all_countries = pdata.get("results", {})
+        cdata = all_countries.get(country.upper())
+        if not cdata:
             return None
-        return results[0].get("vote_average")
+
+        providers = set()
+        for key in ["flatrate", "rent", "buy", "ads", "free"]:
+            for item in cdata.get(key, []) or []:
+                name = item.get("provider_name")
+                if name:
+                    providers.add(name)
+
+        link = cdata.get("link")
+        return {
+            "platforms": sorted(list(providers)) if providers else [],
+            "link": link,
+        }
     except Exception:
         return None
 
@@ -398,65 +435,6 @@ def get_omdb_awards(title, year=None):
         "total_wins": total_wins,
         "total_nominations": total_nominations,
     }
-
-
-@st.cache_data
-def get_streaming_availability(title, year=None, country="CL"):
-    """
-    Streaming desde TMDb watch/providers para un país (CL).
-    """
-    if TMDB_API_KEY is None:
-        return None
-    if not title or pd.isna(title):
-        return None
-
-    title = str(title).strip()
-    year_int = _coerce_year_for_tmdb(year)
-
-    try:
-        search_params = {"api_key": TMDB_API_KEY, "query": title}
-        if year_int is not None:
-            search_params["year"] = year_int
-
-        r = requests.get(TMDB_SEARCH_URL, params=search_params, timeout=4)
-        if r.status_code != 200:
-            return None
-        data = r.json()
-        results = data.get("results", [])
-        if not results:
-            return None
-
-        movie_id = results[0].get("id")
-        if not movie_id:
-            return None
-    except Exception:
-        return None
-
-    try:
-        providers_url = f"https://api.themoviedb.org/3/movie/{movie_id}/watch/providers"
-        r2 = requests.get(providers_url, params={"api_key": TMDB_API_KEY}, timeout=4)
-        if r2.status_code != 200:
-            return None
-        pdata = r2.json()
-        all_countries = pdata.get("results", {})
-        cdata = all_countries.get(country.upper())
-        if not cdata:
-            return None
-
-        providers = set()
-        for key in ["flatrate", "rent", "buy", "ads", "free"]:
-            for item in cdata.get(key, []) or []:
-                name = item.get("provider_name")
-                if name:
-                    providers.add(name)
-
-        link = cdata.get("link")
-        return {
-            "platforms": sorted(list(providers)) if providers else [],
-            "link": link,
-        }
-    except Exception:
-        return None
 
 
 def get_rating_colors(rating):
@@ -675,6 +653,12 @@ max_netflix_items = st.sidebar.slider(
     min_value=4, max_value=20, value=8, step=1
 )
 
+st.sidebar.header("⚙️ Opciones avanzadas")
+show_awards = st.sidebar.checkbox(
+    "Consultar premios en OMDb (más lento, usa cuota de API)",
+    value=False
+)
+
 # ----------------- Filtros (sidebar) -----------------
 
 st.sidebar.header("🎛️ Filtros")
@@ -794,21 +778,9 @@ def apply_search(df_in, query):
     if not query:
         return df_in
     q = query.strip().lower()
-
-    def match_any(row):
-        campos = [
-            row.get("Title", ""),
-            row.get("Original Title", ""),
-            row.get("Directors", ""),
-            row.get("Genres", ""),
-            row.get("Year", ""),
-            row.get("Your Rating", ""),
-            row.get("IMDb Rating", "")
-        ]
-        texto = " ".join(str(x).lower() for x in campos if pd.notna(x))
-        return q in texto
-
-    return df_in[df_in.apply(match_any, axis=1)]
+    if "SearchText" not in df_in.columns:
+        return df_in
+    return df_in[df_in["SearchText"].str.contains(q, na=False)]
 
 
 filtered_view = apply_search(filtered.copy(), search_query)
@@ -870,6 +842,15 @@ with tab_catalog:
         display_df,
         use_container_width=True,
         hide_index=True
+    )
+
+    # Botón de descarga de resultados filtrados
+    csv_filtrado = table_df.to_csv(index=False).encode("utf-8")
+    st.download_button(
+        label="⬇️ Descargar resultados filtrados (CSV)",
+        data=csv_filtrado,
+        file_name="mis_peliculas_filtradas.csv",
+        mime="text/csv",
     )
 
     # Selector de detalle
@@ -936,7 +917,18 @@ with tab_catalog:
                 base_rating = nota if pd.notna(nota) else imdb_rating
                 border_color, glow_color = get_rating_colors(base_rating)
 
-                poster_url = get_poster_url(titulo, year)
+                # TMDb: una sola llamada para póster + rating + id
+                tmdb_info = get_tmdb_basic_info(titulo, year)
+                if tmdb_info:
+                    poster_url = tmdb_info.get("poster_url")
+                    tmdb_rating = tmdb_info.get("vote_average")
+                    tmdb_id = tmdb_info.get("id")
+                    availability = get_tmdb_providers(tmdb_id, country="CL")
+                else:
+                    poster_url = None
+                    tmdb_rating = None
+                    availability = None
+
                 if isinstance(poster_url, str) and poster_url:
                     st.image(poster_url)
                 else:
@@ -946,21 +938,20 @@ with tab_catalog:
                 nota_str = f"⭐ Mi nota: {fmt_rating(nota)}" if pd.notna(nota) else ""
                 imdb_str = f"IMDb: {fmt_rating(imdb_rating)}" if pd.notna(imdb_rating) else ""
 
-                # Premios + TMDb + streaming SIEMPRE en Netflix
-                awards = get_omdb_awards(titulo, year)
-                tmdb_rating = get_tmdb_vote_average(titulo, year)
-                availability = get_streaming_availability(
-                    titulo,
-                    year,
-                    country="CL"
-                )
-
                 tmdb_str = (
                     f"TMDb: {fmt_rating(tmdb_rating)}"
                     if tmdb_rating is not None else "TMDb: N/A"
                 )
 
-                if awards is None:
+                # Premios (OMDb) controlados por checkbox
+                if show_awards:
+                    awards = get_omdb_awards(titulo, year)
+                else:
+                    awards = None
+
+                if not show_awards:
+                    awards_text = "Premios no consultados (OMDb desactivado)."
+                elif awards is None:
                     awards_text = "Sin datos de premios (OMDb)."
                 elif isinstance(awards, dict) and "error" in awards:
                     awards_text = f"Error OMDb: {awards['error']}"
@@ -1091,7 +1082,8 @@ with tab_catalog:
 
                     with col_img:
                         if show_posters_fav:
-                            poster_url = get_poster_url(titulo, year)
+                            tmdb_info = get_tmdb_basic_info(titulo, year)
+                            poster_url = tmdb_info.get("poster_url") if tmdb_info else None
                             if isinstance(poster_url, str) and poster_url:
                                 st.image(poster_url)
                             else:
@@ -1692,16 +1684,32 @@ with tab_what:
                 base_rating = nota if pd.notna(nota) else imdb_rating
                 border_color, glow_color = get_rating_colors(base_rating)
 
-                tmdb_rating = get_tmdb_vote_average(titulo, year)
-                awards = get_omdb_awards(titulo, year)
-                availability = get_streaming_availability(titulo, year, country="CL")
+                # TMDb: una sola llamada para rating + póster + id
+                tmdb_info = get_tmdb_basic_info(titulo, year)
+                if tmdb_info:
+                    tmdb_rating = tmdb_info.get("vote_average")
+                    poster_url = tmdb_info.get("poster_url")
+                    tmdb_id = tmdb_info.get("id")
+                    availability = get_tmdb_providers(tmdb_id, country="CL")
+                else:
+                    tmdb_rating = None
+                    poster_url = None
+                    availability = None
 
                 tmdb_str = (
                     f"TMDb: {fmt_rating(tmdb_rating)}"
                     if tmdb_rating is not None else "TMDb: N/A"
                 )
 
-                if awards is None:
+                # Premios (OMDb) controlados por checkbox
+                if show_awards:
+                    awards = get_omdb_awards(titulo, year)
+                else:
+                    awards = None
+
+                if not show_awards:
+                    awards_text = "Premios no consultados (OMDb desactivado)."
+                elif awards is None:
                     awards_text = "Sin datos de premios (OMDb)."
                 elif isinstance(awards, dict) and "error" in awards:
                     awards_text = f"Error OMDb: {awards['error']}"
@@ -1760,7 +1768,6 @@ with tab_what:
                 col_img, col_info = st.columns([1, 3])
 
                 with col_img:
-                    poster_url = get_poster_url(titulo, year)
                     if isinstance(poster_url, str) and poster_url:
                         st.image(poster_url)
                     else:

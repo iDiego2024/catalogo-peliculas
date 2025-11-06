@@ -830,7 +830,7 @@ search_query = st.text_input(
     key="busqueda_unica"
 )
 
-# función de búsqueda
+
 def apply_search(df_in, query):
     if not query:
         return df_in
@@ -884,40 +884,32 @@ with tab_catalog:
         else:
             st.metric("Promedio IMDb", "N/A")
 
-st.markdown("### 📚 Tabla de resultados")
+    st.markdown("### 📚 Tabla de resultados")
 
-cols_to_show = [
-    c for c in [
-        "Title", "Year", "Your Rating", "IMDb Rating",
-        "Genres", "Directors", "Date Rated", "URL"
+    cols_to_show = [
+        c for c in [
+            "Title", "Year", "Your Rating", "IMDb Rating",
+            "Genres", "Directors", "Date Rated", "URL"
+        ]
+        if c in filtered_view.columns
     ]
-    if c in filtered_view.columns
-]
 
-table_df = filtered_view[cols_to_show].copy()
+    table_df = filtered_view[cols_to_show].copy()
 
-# Creamos una copia solo para mostrar, con las columnas ya formateadas como texto
-display_df = table_df.copy()
+    # DataFrame para mostrar: formateamos columnas como texto
+    display_df = table_df.copy()
 
-if "Year" in display_df.columns:
-    display_df["Year"] = display_df["Year"].apply(fmt_year)
+    if "Year" in display_df.columns:
+        display_df["Year"] = display_df["Year"].apply(fmt_year)
 
-if "Your Rating" in display_df.columns:
-    display_df["Your Rating"] = display_df["Your Rating"].apply(fmt_rating)
+    if "Your Rating" in display_df.columns:
+        display_df["Your Rating"] = display_df["Your Rating"].apply(fmt_rating)
 
-if "IMDb Rating" in display_df.columns:
-    display_df["IMDb Rating"] = display_df["IMDb Rating"].apply(fmt_rating)
-
-# st.dataframe ya se encarga del resto, sin Styler
-st.dataframe(
-    display_df,
-    use_container_width=True,
-    hide_index=True
-)
-
+    if "IMDb Rating" in display_df.columns:
+        display_df["IMDb Rating"] = display_df["IMDb Rating"].apply(fmt_rating)
 
     st.dataframe(
-        styled_table,
+        display_df,
         use_container_width=True,
         hide_index=True
     )
@@ -932,7 +924,6 @@ st.dataframe(
     if filtered_view.empty:
         st.info("No hay resultados bajo los filtros y la búsqueda actual.")
     else:
-        # elegimos base para el modo Netflix
         netflix_df = filtered_view.copy()
 
         # si no hay búsqueda, priorizamos tus favoritas
@@ -942,9 +933,6 @@ st.dataframe(
                     ["Your Rating", "Year"],
                     ascending=[False, True]
                 )
-        else:
-            # con búsqueda no reordenamos demasiado; ya se ordenó antes
-            pass
 
         netflix_df = netflix_df.head(max_netflix_items)
 
@@ -975,7 +963,6 @@ st.dataframe(
                 else:
                     st.write("Sin póster")
 
-                # información básica
                 year_str = f" ({int(year)})" if pd.notna(year) else ""
                 nota_str = f"⭐ Tu nota: {fmt_rating(nota)}" if pd.notna(nota) else ""
                 imdb_str = f"IMDb: {fmt_rating(imdb_rating)}" if pd.notna(imdb_rating) else ""

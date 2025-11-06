@@ -420,32 +420,69 @@ def get_omdb_awards(title, year=None):
 @st.cache_data
 def get_streaming_availability(title, year=None, country="US"):
     """
-    Devuelve lista de plataformas de streaming para un título.
-    Necesita STREAMING_API_KEY en st.secrets.
+    Devuelve lista de plataformas de streaming para un título usando TMDb.
+    - Busca la película (search/movie) para obtener movie_id.
+    - Luego consulta /movie/{movie_id}/watch/providers.
+    - country: código de país ISO 3166-1 (ej: "US", "ES", "CL").
     """
-    API_KEY = st.secrets.get("STREAMING_API_KEY", None)
-    if API_KEY is None:
+    if TMDB_API_KEY is None:
         return None
 
+    if not title or pd.isna(title):
+        return None
+
+    title = str(title).strip()
+    year_int = _coerce_year_for_tmdb(year)
+
+    # 1) Buscar la película para obtener el ID
     try:
-        params = {
-            "apiKey": API_KEY,
-            "search_field": "title",
-            "search_value": title,
-            "country": country,
+        search_params = {
+            "api_key": TMDB_API_KEY,
+            "query": title,
         }
-        r = requests.get("https://api.watchmode.com/v1/search/", params=params, timeout=4)
+        if year_int is not None:
+            search_params["year"] = year_int
+
+        r = requests.get(TMDB_SEARCH_URL, params=search_params, timeout=4)
         if r.status_code != 200:
             return None
+
         data = r.json()
-        platforms = set()
-        for item in data.get("titles", []):
-            if item.get("title", "").lower() == str(title).lower():
-                for src in item.get("sources", []):
-                    name = src.get("name")
-                    if name:
-                        platforms.add(name)
-        return sorted(list(platforms)) if platforms else None
+        results = data.get("results", [])
+        if not results:
+            return None
+
+        movie_id = results[0].get("id")
+        if not movie_id:
+            return None
+    except Exception:
+        return None
+
+    # 2) Consultar proveedores de streaming para ese movie_id
+    try:
+        providers_url = f"https://api.themoviedb.org/3/movie/{movie_id}/watch/providers"
+        r2 = requests.get(
+            providers_url,
+            params={"api_key": TMDB_API_KEY},
+            timeout=4
+        )
+        if r2.status_code != 200:
+            return None
+
+        pdata = r2.json()
+        all_countries = pdata.get("results", {})
+        cdata = all_countries.get(country.upper())
+        if not cdata:
+            return None
+
+        providers = set()
+        for key in ["flatrate", "rent", "buy", "ads", "free"]:
+            for item in cdata.get(key, []) or []:
+                name = item.get("provider_name")
+                if name:
+                    providers.add(name)
+
+        return sorted(providers) if providers else None
     except Exception:
         return None
 
@@ -1526,19 +1563,24 @@ with st.expander("Ver progreso en la lista AFI 100", expanded=True):
 st.markdown("---")
 st.markdown("## 🌐 Dónde ver las películas (plataformas de streaming)")
 
-streaming_key = st.secrets.get("STREAMING_API_KEY", None)
-
-if streaming_key is None:
-    st.info("Sección de plataformas desactivada por ahora (no hay STREAMING_API_KEY configurada).")
+if TMDB_API_KEY is None:
+    st.info("Sección de plataformas desactivada: falta configurar TMDB_API_KEY en Secrets.")
 else:
     with st.expander("Consultar plataformas de streaming para tus resultados filtrados", expanded=False):
         if filtered.empty:
             st.info("No hay resultados bajo los filtros actuales.")
         else:
             st.write(
-                "Consulta aproximada de plataformas para algunas de las películas filtradas "
-                "(para no abusar de la API, se limita a unas cuantas)."
+                "Datos de disponibilidad obtenidos desde TMDb (`watch/providers`). "
+                "Los catálogos varían según país."
             )
+
+            country_code = st.text_input(
+                "Código de país (ISO 3166-1, ej: US, ES, CL)",
+                value="US",
+                max_chars=2
+            )
+
             max_items = st.slider(
                 "Número máximo de películas a consultar",
                 min_value=5, max_value=30, value=10, step=1
@@ -1556,8 +1598,12 @@ else:
                 base_rating = your_rating if pd.notna(your_rating) else imdb_rating
                 border_color, glow_color = get_rating_colors(base_rating)
 
-                platforms = get_streaming_availability(titulo, year)
-                platforms_str = ", ".join(platforms) if platforms else "Sin datos (o no disponible)"
+                platforms = get_streaming_availability(
+                    titulo,
+                    year,
+                    country=country_code or "US"
+                )
+                platforms_str = ", ".join(platforms) if platforms else "Sin datos para este país"
 
                 st.markdown(
                     f"""
@@ -1574,7 +1620,7 @@ else:
                       <div class="movie-sub">
                         {f"⭐ Tu nota: {fmt_rating(your_rating)}<br>" if pd.notna(your_rating) else ""}
                         {f"IMDb: {fmt_rating(imdb_rating)}<br>" if pd.notna(imdb_rating) else ""}
-                        <b>Plataformas:</b> {platforms_str}<br>
+                        <b>Plataformas ({(country_code or 'US').upper()}):</b> {platforms_str}<br>
                         {f'<a href="{url}" target="_blank">Ver en IMDb</a>' if isinstance(url, str) and url.startswith("http") else ""}
                       </div>
                     </div>

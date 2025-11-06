@@ -15,7 +15,7 @@ st.set_page_config(
 st.title("🎥 Mi catálogo de películas (IMDb)")
 st.write(
     "App basada en tu export de IMDb. "
-    "Puedes filtrar por año, nota, géneros, director y usar una búsqueda global."
+    "Puedes filtrar por año, nota, géneros, director y usar búsquedas globales o dentro de los filtros."
 )
 
 # ----------------- Config TMDb -----------------
@@ -418,12 +418,16 @@ def get_omdb_awards(title, year=None):
 
 
 @st.cache_data
-def get_streaming_availability(title, year=None, country="US"):
+def get_streaming_availability(title, year=None, country="CL"):
     """
-    Devuelve lista de plataformas de streaming para un título usando TMDb.
+    Devuelve info de streaming para un título usando TMDb (pensado para Chile - CL).
     - Busca la película (search/movie) para obtener movie_id.
     - Luego consulta /movie/{movie_id}/watch/providers.
-    - country: código de país ISO 3166-1 (ej: "US", "ES", "CL").
+    Devuelve:
+      {
+        "platforms": [lista de nombres de plataformas],
+        "link": URL a la página de TMDb con opciones de streaming en ese país
+      }
     """
     if TMDB_API_KEY is None:
         return None
@@ -482,7 +486,12 @@ def get_streaming_availability(title, year=None, country="US"):
                 if name:
                     providers.add(name)
 
-        return sorted(providers) if providers else None
+        link = cdata.get("link")  # enlace a página de TMDb con opciones de streaming
+
+        return {
+            "platforms": sorted(list(providers)) if providers else [],
+            "link": link,
+        }
     except Exception:
         return None
 
@@ -794,16 +803,79 @@ st.caption(
 )
 
 # ============================================================
-#                     BÚSQUEDA
+#        BÚSQUEDA GLOBAL (EN TODO TU CATÁLOGO)
 # ============================================================
 
-st.markdown("## 🔎 Búsqueda")
+st.markdown("## 🔎 Búsqueda global en todo tu catálogo")
+
+global_query = st.text_input(
+    "Buscar cualquier película de tu catálogo completo (ignora filtros)",
+    placeholder="Título, director, género, año, nota…",
+    key="busqueda_global"
+)
+
+if global_query:
+    qg = global_query.strip().lower()
+
+    def match_any_global(row):
+        campos = [
+            row.get("Title", ""),
+            row.get("Original Title", ""),
+            row.get("Directors", ""),
+            row.get("Genres", ""),
+            row.get("Year", ""),
+            row.get("Your Rating", ""),
+            row.get("IMDb Rating", "")
+        ]
+        texto = " ".join(str(x).lower() for x in campos if pd.notna(x))
+        return qg in texto
+
+    global_results = df[df.apply(match_any_global, axis=1)]
+
+    st.write(f"Resultados globales encontrados: {len(global_results)}")
+
+    if not global_results.empty:
+        cols_global = [
+            c for c in ["Title", "Year", "Your Rating", "IMDb Rating", "Genres", "Directors", "URL"]
+            if c in global_results.columns
+        ]
+        gr = global_results[cols_global].copy()
+
+        def fmt_year(y):
+            if pd.isna(y):
+                return ""
+            return f"{int(float(y))}"
+
+        def fmt_rating(v):
+            if pd.isna(v):
+                return ""
+            try:
+                return f"{float(v):.1f}"
+            except Exception:
+                return str(v)
+
+        if "Year" in gr.columns:
+            gr["Year"] = gr["Year"].apply(fmt_year)
+        if "Your Rating" in gr.columns:
+            gr["Your Rating"] = gr["Your Rating"].apply(fmt_rating)
+        if "IMDb Rating" in gr.columns:
+            gr["IMDb Rating"] = gr["IMDb Rating"].apply(fmt_rating)
+
+        st.dataframe(gr, use_container_width=True, hide_index=True)
+
+st.markdown("---")
+
+# ============================================================
+#                     BÚSQUEDA (DENTRO DE FILTROS)
+# ============================================================
+
+st.markdown("## 🔎 Búsqueda dentro de los resultados filtrados")
 
 search_query = st.text_input(
-    "Buscar en títulos, directores, géneros, años o calificaciones",
+    "Buscar en títulos, directores, géneros, años o calificaciones (solo dentro de los filtros activos)",
     label_visibility="collapsed",
     placeholder="Escribe cualquier cosa…",
-    key="busqueda"
+    key="busqueda_filtros"
 )
 
 st.markdown("---")
@@ -1312,7 +1384,7 @@ else:
             )
 
             search_title = st.text_input(
-                "Buscar película por título (opcional)",
+                "Buscar película por título (opcional, dentro de los filtros)",
                 placeholder="Escribe parte del título…",
                 key="premios_search_title"
             )
@@ -1561,24 +1633,18 @@ with st.expander("Ver progreso en la lista AFI 100", expanded=True):
 # ============================================================
 
 st.markdown("---")
-st.markdown("## 🌐 Dónde ver las películas (plataformas de streaming)")
+st.markdown("## 🌐 Dónde ver las películas (plataformas de streaming en Chile)")
 
 if TMDB_API_KEY is None:
     st.info("Sección de plataformas desactivada: falta configurar TMDB_API_KEY en Secrets.")
 else:
-    with st.expander("Consultar plataformas de streaming para tus resultados filtrados", expanded=False):
+    with st.expander("Consultar plataformas de streaming para tus resultados filtrados (Chile - CL)", expanded=False):
         if filtered.empty:
             st.info("No hay resultados bajo los filtros actuales.")
         else:
             st.write(
-                "Datos de disponibilidad obtenidos desde TMDb (`watch/providers`). "
-                "Los catálogos varían según país."
-            )
-
-            country_code = st.text_input(
-                "Código de país (ISO 3166-1, ej: US, ES, CL)",
-                value="US",
-                max_chars=2
+                "Datos de disponibilidad obtenidos desde TMDb (`watch/providers`) "
+                "para **Chile (CL)**. Los catálogos pueden cambiar con el tiempo."
             )
 
             max_items = st.slider(
@@ -1598,12 +1664,24 @@ else:
                 base_rating = your_rating if pd.notna(your_rating) else imdb_rating
                 border_color, glow_color = get_rating_colors(base_rating)
 
-                platforms = get_streaming_availability(
+                availability = get_streaming_availability(
                     titulo,
                     year,
-                    country=country_code or "US"
+                    country="CL"
                 )
-                platforms_str = ", ".join(platforms) if platforms else "Sin datos para este país"
+
+                if availability is None:
+                    platforms = []
+                    link = None
+                else:
+                    platforms = availability.get("platforms") or []
+                    link = availability.get("link")
+
+                platforms_str = ", ".join(platforms) if platforms else "Sin datos para Chile (CL)"
+                link_html = (
+                    f'<a href="{link}" target="_blank">Ver opciones de streaming en TMDb (Chile)</a>'
+                    if link else "Sin enlace de streaming disponible"
+                )
 
                 st.markdown(
                     f"""
@@ -1620,7 +1698,8 @@ else:
                       <div class="movie-sub">
                         {f"⭐ Tu nota: {fmt_rating(your_rating)}<br>" if pd.notna(your_rating) else ""}
                         {f"IMDb: {fmt_rating(imdb_rating)}<br>" if pd.notna(imdb_rating) else ""}
-                        <b>Plataformas ({(country_code or 'US').upper()}):</b> {platforms_str}<br>
+                        <b>Plataformas (CL):</b> {platforms_str}<br>
+                        {link_html}<br>
                         {f'<a href="{url}" target="_blank">Ver en IMDb</a>' if isinstance(url, str) and url.startswith("http") else ""}
                       </div>
                     </div>

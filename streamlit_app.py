@@ -270,10 +270,13 @@ def get_tmdb_vote_average(title, year=None):
 @st.cache_data
 def get_omdb_awards(title, year=None):
     """
-    Consulta OMDb y devuelve info de premios:
+    Consulta OMDb y devuelve info de premios importantes.
     - raw: texto original del campo Awards
     - oscars: nº de Oscars ganados
     - emmys: nº de Emmys ganados
+    - baftas: nº de BAFTA ganados (aprox)
+    - golden_globes: nº de Globos de Oro ganados (aprox)
+    - palme_dor: True si detecta Palma de Oro en el texto
     """
     api_key = st.secrets.get("OMDB_API_KEY", None)
     if api_key is None:
@@ -308,6 +311,7 @@ def get_omdb_awards(title, year=None):
 
     data = None
 
+    # 1) intento por título "tal cual", 2) título simplificado sin paréntesis
     for t in [raw_title, simple_title]:
         params = {"apikey": api_key, "t": t}
         if year_int:
@@ -316,6 +320,7 @@ def get_omdb_awards(title, year=None):
         if data:
             break
 
+    # 3) búsqueda general si lo anterior falla
     if not data:
         params = {"apikey": api_key, "s": simple_title}
         if year_int:
@@ -332,17 +337,31 @@ def get_omdb_awards(title, year=None):
 
     awards_str = data.get("Awards", "")
     if not awards_str or awards_str == "N/A":
-        return {"raw": None, "oscars": 0, "emmys": 0}
+        return {
+            "raw": None,
+            "oscars": 0,
+            "emmys": 0,
+            "baftas": 0,
+            "golden_globes": 0,
+            "palme_dor": False,
+        }
 
     text_lower = awards_str.lower()
 
     oscars = 0
     emmys = 0
+    baftas = 0
+    golden_globes = 0
+    palme_dor = False
 
+    # Oscars ganados
     m_osc = re.search(r"won\s+(\d+)\s+oscars?", text_lower)
+    if not m_osc:
+        m_osc = re.search(r"won\s+(\d+)\s+oscar\b", text_lower)
     if m_osc:
         oscars = int(m_osc.group(1))
 
+    # Emmys ganados
     for pat in [
         r"won\s+(\d+)\s+primetime\s+emmys?",
         r"won\s+(\d+)\s+emmys?",
@@ -353,10 +372,33 @@ def get_omdb_awards(title, year=None):
             emmys = int(m.group(1))
             break
 
+    # BAFTA (aprox: primero intentamos número, si no, al menos flag de que tiene algo)
+    m_bafta = re.search(r"won\s+(\d+)[^\.]*bafta", text_lower)
+    if m_bafta:
+        baftas = int(m_bafta.group(1))
+    elif "bafta" in text_lower:
+        baftas = 1  # al menos sabemos que tiene algún BAFTA
+
+    # Globos de Oro (idem)
+    m_globe = re.search(r"won\s+(\d+)[^\.]*golden\s+globes?", text_lower)
+    if not m_globe:
+        m_globe = re.search(r"won\s+(\d+)[^\.]*golden\s+globe\b", text_lower)
+    if m_globe:
+        golden_globes = int(m_globe.group(1))
+    elif "golden globe" in text_lower:
+        golden_globes = 1
+
+    # Palma de Oro (normalmente con ese texto)
+    if re.search(r"palme\s+d['’]or", text_lower):
+        palme_dor = True
+
     return {
         "raw": awards_str,
         "oscars": oscars,
         "emmys": emmys,
+        "baftas": baftas,
+        "golden_globes": golden_globes,
+        "palme_dor": palme_dor,
     }
 
 
@@ -1195,6 +1237,153 @@ with st.expander("Ver análisis de gustos personales", expanded=False):
                 st.write("No hay suficientes datos (año + tus notas + IMDb) para analizar tu evolución.")
         else:
             st.write("Faltan columnas 'Year', 'Your Rating' o 'IMDb Rating' para analizar tu evolución en el tiempo.")
+
+# ============================================================
+#           PREMIOS PRINCIPALES (AWARDS: OSCAR, ETC.)
+# ============================================================
+
+st.markdown("---")
+st.markdown("## 🏆 Premios principales (Oscar, Emmy, BAFTA, Globos de Oro, Palma de Oro)")
+
+omdb_key = st.secrets.get("OMDB_API_KEY", None)
+
+if omdb_key is None:
+    st.info("Sección de premios desactivada: falta configurar OMDB_API_KEY en Secrets.")
+else:
+    with st.expander("Ver premios de tus películas", expanded=False):
+        if filtered.empty:
+            st.info("No hay resultados bajo los filtros actuales.")
+        else:
+            st.write(
+                "Puedes buscar un título concreto o usar los resultados filtrados. "
+                "Los datos de premios vienen de OMDb; pósters y rating TMDb, de la API de TMDb."
+            )
+
+            # Búsqueda opcional dedicada
+            search_title = st.text_input(
+                "Buscar película por título (opcional)",
+                placeholder="Escribe parte del título…",
+                key="premios_search_title"
+            )
+
+            base_df = filtered.copy()
+
+            if search_title:
+                base_df = base_df[
+                    base_df["Title"]
+                    .astype(str)
+                    .str.contains(search_title, case=False, na=False)
+                ]
+                if base_df.empty:
+                    st.warning("No encontré coincidencias con ese título bajo los filtros actuales.")
+
+            if not base_df.empty:
+                max_items = st.slider(
+                    "Número máximo de películas a analizar (para no abusar de las APIs)",
+                    min_value=1,
+                    max_value=20,
+                    value=5,
+                    step=1,
+                    key="premios_max_items"
+                )
+
+                subset = base_df.head(max_items)
+
+                for _, row in subset.iterrows():
+                    titulo = row.get("Title", "Sin título")
+                    year = row.get("Year", None)
+                    your_rating = row.get("Your Rating", None)
+                    imdb_rating = row.get("IMDb Rating", None)
+                    url = row.get("URL", "")
+
+                    # Datos externos
+                    awards = get_omdb_awards(titulo, year)
+                    tmdb_rating = get_tmdb_vote_average(titulo, year)
+                    poster_url = get_poster_url(titulo, year)
+
+                    # Texto de premios
+                    if awards is None:
+                        awards_text = "Sin datos de premios en OMDb."
+                    else:
+                        parts = []
+                        if awards.get("oscars", 0):
+                            parts.append(f"🏆 {awards['oscars']} Oscar(s)")
+                        if awards.get("emmys", 0):
+                            parts.append(f"📺 {awards['emmys']} Emmy(s)")
+                        if awards.get("baftas", 0):
+                            parts.append(f"🎭 {awards['baftas']} BAFTA(s)")
+                        if awards.get("golden_globes", 0):
+                            parts.append(f"🌐 {awards['golden_globes']} Globo(s) de Oro")
+                        if awards.get("palme_dor", False):
+                            parts.append("🌴 Palma de Oro en Cannes")
+
+                        if not parts:
+                            awards_text = "No se detectan grandes premios en el texto de OMDb."
+                        else:
+                            awards_text = " · ".join(parts)
+                            if awards.get("raw"):
+                                awards_text += (
+                                    f"<br><span style='font-size:0.8rem;color:#9ca3af;'>"
+                                    f"OMDb: {awards['raw']}</span>"
+                                )
+
+                    # Colores según tu nota / IMDb
+                    base_rating = your_rating if pd.notna(your_rating) else imdb_rating
+                    border_color, glow_color = get_rating_colors(base_rating)
+
+                    col_img, col_info = st.columns([1, 3])
+
+                    with col_img:
+                        if isinstance(poster_url, str) and poster_url:
+                            st.image(poster_url)
+                        else:
+                            st.write("Sin póster")
+
+                    with col_info:
+                        year_str = (
+                            f" ({int(year)})"
+                            if year is not None and not pd.isna(year)
+                            else ""
+                        )
+                        your_str = (
+                            fmt_rating(your_rating)
+                            if your_rating is not None and pd.notna(your_rating)
+                            else "N/A"
+                        )
+                        imdb_str = (
+                            fmt_rating(imdb_rating)
+                            if imdb_rating is not None and pd.notna(imdb_rating)
+                            else "N/A"
+                        )
+                        tmdb_str = (
+                            fmt_rating(tmdb_rating)
+                            if tmdb_rating is not None
+                            else "N/A"
+                        )
+
+                        st.markdown(
+                            f"""
+                            <div class="movie-card" style="
+                                border-color: {border_color};
+                                box-shadow:
+                                    0 0 0 1px rgba(15,23,42,0.9),
+                                    0 0 26px {glow_color};
+                                margin-bottom: 14px;
+                            ">
+                              <div class="movie-title">
+                                {titulo}{year_str}
+                              </div>
+                              <div class="movie-sub">
+                                ⭐ Tu nota: {your_str}<br>
+                                IMDb: {imdb_str}<br>
+                                TMDb: {tmdb_str}<br>
+                                <b>Premios destacados:</b> {awards_text}<br>
+                                {f'<a href="{url}" target="_blank">Ver en IMDb</a>' if isinstance(url, str) and url.startswith("http") else ""}
+                              </div>
+                            </div>
+                            """,
+                            unsafe_allow_html=True,
+                        )
 
 # ============================================================
 #                   LISTA AFI 100 (10th Anniversary)

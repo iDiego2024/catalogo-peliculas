@@ -129,6 +129,7 @@ AFI_LIST = [
     {"Rank": 100, "Title": "Ben-Hur", "Year": 1959},
 ]
 
+
 def normalize_title(s: str) -> str:
     """Normaliza un título para compararlo (minúsculas, sin espacios ni signos)."""
     return re.sub(r"[^a-z0-9]+", "", str(s).lower())
@@ -277,15 +278,15 @@ def get_omdb_awards(title, year=None):
     - baftas: nº de BAFTA ganados (aprox)
     - golden_globes: nº de Globos de Oro ganados (aprox)
     - palme_dor: True si detecta Palma de Oro en el texto
+    - error: texto de error de OMDb si lo hay
     """
     api_key = st.secrets.get("OMDB_API_KEY", None)
     if api_key is None:
-        return None
+        return {"error": "OMDB_API_KEY no está configurada en st.secrets."}
 
     if not title or pd.isna(title):
-        return None
+        return {"error": "Título vacío o inválido."}
 
-    # IMPORTANTE: HTTPS
     base_url = "https://www.omdbapi.com/"
 
     raw_title = str(title).strip()
@@ -300,41 +301,54 @@ def get_omdb_awards(title, year=None):
 
     def _query(params):
         try:
-            r = requests.get(base_url, params=params, timeout=5)
+            r = requests.get(base_url, params=params, timeout=8)
             if r.status_code != 200:
-                return None
+                return {"error": f"HTTP {r.status_code} desde OMDb."}
             data = r.json()
             if data.get("Response") != "True":
-                return None
+                return {"error": data.get("Error", "Respuesta no válida de OMDb.")}
             return data
-        except Exception:
-            return None
+        except Exception as e:
+            return {"error": f"Excepción al llamar a OMDb: {e}"}
 
     data = None
+    last_error = None
 
     # 1) intento exacto por título / título sin paréntesis
     for t in [raw_title, simple_title]:
         params = {"apikey": api_key, "t": t, "type": "movie"}
         if year_int:
             params["y"] = year_int
-        data = _query(params)
-        if data:
+        candidate = _query(params)
+        if candidate is None:
+            continue
+        if "error" in candidate:
+            last_error = candidate["error"]
+        else:
+            data = candidate
             break
 
     # 2) búsqueda general si lo anterior falla
-    if not data:
+    if data is None:
         params = {"apikey": api_key, "s": simple_title, "type": "movie"}
         if year_int:
             params["y"] = year_int
         search = _query(params)
-        if search and "Search" in search:
+        if search and "error" not in search and "Search" in search:
             best = search["Search"][0]
             imdb_id = best.get("imdbID")
             if imdb_id:
                 data = _query({"apikey": api_key, "i": imdb_id})
+                if isinstance(data, dict) and "error" in data:
+                    last_error = data["error"]
+        elif search and "error" in search:
+            last_error = search["error"]
 
-    if not data:
-        return None
+    if data is None:
+        return {"error": last_error or "No se encontró la película en OMDb."}
+
+    if "error" in data:
+        return {"error": data["error"]}
 
     awards_str = data.get("Awards", "")
     if not awards_str or awards_str == "N/A":
@@ -373,14 +387,14 @@ def get_omdb_awards(title, year=None):
             emmys = int(m.group(1))
             break
 
-    # BAFTA (aprox: primero intentamos número, si no, al menos flag de que tiene algo)
+    # BAFTA
     m_bafta = re.search(r"won\s+(\d+)[^\.]*bafta", text_lower)
     if m_bafta:
         baftas = int(m_bafta.group(1))
     elif "bafta" in text_lower:
-        baftas = 1  # al menos sabemos que tiene algún BAFTA
+        baftas = 1
 
-    # Globos de Oro (idem)
+    # Globos de Oro
     m_globe = re.search(r"won\s+(\d+)[^\.]*golden\s+globes?", text_lower)
     if not m_globe:
         m_globe = re.search(r"won\s+(\d+)[^\.]*golden\s+globe\b", text_lower)
@@ -389,7 +403,7 @@ def get_omdb_awards(title, year=None):
     elif "golden globe" in text_lower:
         golden_globes = 1
 
-    # Palma de Oro (normalmente aparece así en el texto)
+    # Palma de Oro
     if re.search(r"palme\s+d['’]or", text_lower):
         palme_dor = True
 
@@ -1260,7 +1274,6 @@ else:
                 "Los datos de premios vienen de OMDb; pósters y rating TMDb, de la API de TMDb."
             )
 
-            # Búsqueda opcional dedicada
             search_title = st.text_input(
                 "Buscar película por título (opcional)",
                 placeholder="Escribe parte del título…",
@@ -1297,17 +1310,17 @@ else:
                     imdb_rating = row.get("IMDb Rating", None)
                     url = row.get("URL", "")
 
-                    # Datos externos
                     awards = get_omdb_awards(titulo, year)
                     tmdb_rating = get_tmdb_vote_average(titulo, year)
                     poster_url = get_poster_url(titulo, year)
 
-                    # Texto de premios
                     if awards is None:
                         awards_text = (
-                            "No se pudo obtener información de premios desde OMDb "
-                            "(puede ser problema de API key, límites o conexión)."
+                            "No se pudo obtener información de OMDb "
+                            "(probablemente falta OMDB_API_KEY en Secrets)."
                         )
+                    elif isinstance(awards, dict) and "error" in awards:
+                        awards_text = f"Error al consultar OMDb: {awards['error']}"
                     else:
                         parts = []
                         if awards.get("oscars", 0):
@@ -1336,7 +1349,6 @@ else:
                                     f"OMDb: {awards['raw']}</span>"
                                 )
 
-                    # Colores según tu nota / IMDb
                     base_rating = your_rating if pd.notna(your_rating) else imdb_rating
                     border_color, glow_color = get_rating_colors(base_rating)
 

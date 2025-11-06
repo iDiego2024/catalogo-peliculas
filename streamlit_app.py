@@ -884,40 +884,37 @@ with tab_catalog:
         else:
             st.metric("Promedio IMDb", "N/A")
 
-    st.markdown("### 📚 Tabla de resultados")
+st.markdown("### 📚 Tabla de resultados")
 
-    cols_to_show = [
-        c for c in ["Title", "Year", "Your Rating", "IMDb Rating",
-                    "Genres", "Directors", "Date Rated", "URL"]
-        if c in filtered_view.columns
+cols_to_show = [
+    c for c in [
+        "Title", "Year", "Your Rating", "IMDb Rating",
+        "Genres", "Directors", "Date Rated", "URL"
     ]
-    table_df = filtered_view[cols_to_show].copy()
+    if c in filtered_view.columns
+]
 
-    format_dict = {}
-    subset_cols = []
+table_df = filtered_view[cols_to_show].copy()
 
-    if "Year" in table_df.columns:
-        format_dict["Year"] = fmt_year
-        subset_cols.append("Year")
+# Creamos una copia solo para mostrar, con las columnas ya formateadas como texto
+display_df = table_df.copy()
 
-    if "Your Rating" in table_df.columns:
-        format_dict["Your Rating"] = fmt_rating
-        subset_cols.append("Your Rating")
+if "Year" in display_df.columns:
+    display_df["Year"] = display_df["Year"].apply(fmt_year)
 
-    if "IMDb Rating" in table_df.columns:
-        format_dict["IMDb Rating"] = fmt_rating
-        subset_cols.append("IMDb Rating")
+if "Your Rating" in display_df.columns:
+    display_df["Your Rating"] = display_df["Your Rating"].apply(fmt_rating)
 
-    styled_table = (
-        table_df.style
-        .format(format_dict)
-        .set_properties(subset=subset_cols, **{"text-align": "center"})
-        .set_table_styles(
-            [
-                {"selector": "th.col_heading", "props": [("text-align", "center")]},
-            ]
-        )
-    )
+if "IMDb Rating" in display_df.columns:
+    display_df["IMDb Rating"] = display_df["IMDb Rating"].apply(fmt_rating)
+
+# st.dataframe ya se encarga del resto, sin Styler
+st.dataframe(
+    display_df,
+    use_container_width=True,
+    hide_index=True
+)
+
 
     st.dataframe(
         styled_table,

@@ -11,7 +11,7 @@ from urllib.parse import quote_plus
 
 st.set_page_config(
     page_title="🎬 Mi catálogo de Películas",
-    layout="centered"
+    layout="centered"   # Usamos centered + CSS responsivo
 )
 
 st.title("🎥 Mi catálogo de películas (IMDb)")
@@ -498,30 +498,6 @@ def get_spanish_review_link(title, year=None):
     return "https://www.google.com/search?q=" + quote_plus(q)
 
 
-def render_poster_placeholder(text="Sin póster"):
-    """Devuelve HTML de un placeholder tipo carrete vintage."""
-    return f"""
-    <div class="movie-poster-frame">
-      <div class="movie-poster-placeholder">
-        <div class="film-reel-icon">🎞️</div>
-        <div class="film-reel-text">{text}</div>
-      </div>
-    </div>
-    """
-
-
-def get_poster_html(poster_url, alt_text="Póster"):
-    """Devuelve HTML de la imagen dentro de un frame; si no hay, usa placeholder."""
-    if isinstance(poster_url, str) and poster_url:
-        return f"""
-        <div class="movie-poster-frame">
-          <img src="{poster_url}" alt="{alt_text}" class="movie-poster-img">
-        </div>
-        """
-    else:
-        return render_poster_placeholder("Sin póster")
-
-
 # ----------------- Carga de datos -----------------
 
 st.sidebar.header("📂 Datos")
@@ -532,10 +508,10 @@ uploaded = st.sidebar.file_uploader(
 )
 
 if uploaded is not None:
-    df = load_data(uploaded).copy()
+    df = load_data(uploaded)
 else:
     try:
-        df = load_data("peliculas.csv").copy()
+        df = load_data("peliculas.csv")
     except FileNotFoundError:
         st.error(
             "No se encontró 'peliculas.csv' en el repositorio y no se subió archivo.\n\n"
@@ -587,9 +563,10 @@ st.markdown(
         font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
     }}
 
+    /* Contenedor principal responsivo */
     .main .block-container {{
         max-width: 1200px;
-        padding-top: 4.5rem;  /* margen para que no se corte el título */
+        padding-top: 1.8rem;
         padding-bottom: 3rem;
     }}
 
@@ -626,16 +603,14 @@ st.markdown(
     h1 {{
         text-transform: uppercase;
         font-weight: 800;
-        font-size: 1.6rem !important;
-        line-height: 1.3 !important;
+        font-size: 2.0rem !important;
         background: linear-gradient(90deg, var(--accent), var(--accent-alt));
         -webkit-background-clip: text;
         color: transparent;
-        margin-top: 0.5rem !important;
-        margin-bottom: 0.1rem;
-        white-space: normal !important;
-        word-wrap: break-word !important;
-        overflow-wrap: break-word !important;
+        margin-top: 0.3rem;
+        margin-bottom: 0.6rem;
+        line-height: 1.25;
+        text-align: left;
     }}
 
     h2 {{
@@ -701,6 +676,13 @@ st.markdown(
         transition: all 0.18s ease-out;
     }}
 
+    button[kind="secondary"]:hover, button[kind="primary"]:hover, .stButton > button:hover {{
+        transform: translateY(-1px);
+        box-shadow:
+            0 0 0 1px rgba(250,204,21,0.7),
+            0 0 26px rgba(250,204,21,0.75);
+    }}
+
     .movie-card {{
         background: radial-gradient(circle at top left, rgba(15,23,42,0.9), rgba(15,23,42,0.85));
         border-radius: var(--radius-lg);
@@ -715,7 +697,18 @@ st.markdown(
     }}
 
     .movie-card-grid {{
-        padding: 10px 10px 12px 10px;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        gap: 0.4rem;
+    }}
+
+    .movie-card-grid:hover {{
+        transform: translateY(-4px) scale(1.01);
+        box-shadow:
+            0 0 0 1px rgba(250,204,21,0.7),
+            0 0 32px rgba(250,204,21,0.85);
+        border-color: #facc15 !important;
     }}
 
     .movie-title {{
@@ -733,24 +726,31 @@ st.markdown(
         color: #cbd5f5;
     }}
 
-    .movie-grid {{
+    /* GRID de la galería */
+
+    .movie-gallery-grid {{
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
-        gap: 1.1rem;
-        margin-top: 0.75rem;
+        grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+        gap: 18px;
+        margin-top: 0.7rem;
+    }}
+
+    @media (max-width: 900px) {{
+        .movie-gallery-grid {{
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: 14px;
+        }}
     }}
 
     .movie-poster-frame {{
         width: 100%;
         aspect-ratio: 2 / 3;
-        border-radius: 12px;
+        border-radius: 14px;
         overflow: hidden;
-        border: 1px solid rgba(148,163,184,0.55);
-        background: radial-gradient(circle at top, #020617 0%, #020617 40%, #000000 100%);
-        margin-bottom: 8px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
+        background: radial-gradient(circle at top, #020617 0%, #000000 55%, #020617 100%);
+        border: 1px solid rgba(148,163,184,0.5);
+        position: relative;
+        box-shadow: 0 14px 30px rgba(0,0,0,0.85);
     }}
 
     .movie-poster-img {{
@@ -758,6 +758,12 @@ st.markdown(
         height: 100%;
         object-fit: cover;
         display: block;
+        transform-origin: center;
+        transition: transform 0.25s ease-out;
+    }}
+
+    .movie-card-grid:hover .movie-poster-img {{
+        transform: scale(1.03);
     }}
 
     .movie-poster-placeholder {{
@@ -767,22 +773,29 @@ st.markdown(
         flex-direction: column;
         align-items: center;
         justify-content: center;
-        gap: 4px;
-        color: #e5e7eb;
-        font-size: 0.75rem;
-        background: radial-gradient(circle at center, #111827 0%, #020617 60%, #000000 100%);
+        background:
+            radial-gradient(circle at 15% 0%, rgba(250,204,21,0.12), rgba(15,23,42,1)),
+            radial-gradient(circle at 85% 100%, rgba(56,189,248,0.16), rgba(0,0,0,1));
+        position: relative;
     }}
 
     .film-reel-icon {{
-        font-size: 1.8rem;
-        filter: drop-shadow(0 0 6px rgba(0,0,0,0.6));
+        font-size: 2.2rem;
+        filter: drop-shadow(0 0 12px rgba(250,204,21,0.85));
+        margin-bottom: 0.25rem;
     }}
 
     .film-reel-text {{
-        opacity: 0.85;
+        font-size: 0.78rem;
+        text-transform: uppercase;
+        letter-spacing: 0.16em;
+        color: #e5e7eb;
+        opacity: 0.95;
     }}
 
-    /* Tabla principal */
+    /* ==========================
+       Tabla principal del catálogo
+       ========================== */
 
     [data-testid="stDataFrame"] {{
         border-radius: var(--radius-xl) !important;
@@ -821,6 +834,10 @@ show_posters_fav = st.sidebar.checkbox(
     "Mostrar pósters TMDb en mis favoritas (nota ≥ 9)",
     value=True
 )
+max_netflix_items = st.sidebar.slider(
+    "Máx. películas en tarjetas de detalle",
+    min_value=4, max_value=20, value=8, step=1
+)
 
 st.sidebar.header("⚙️ Opciones avanzadas")
 show_awards = st.sidebar.checkbox(
@@ -851,9 +868,13 @@ else:
     rating_range = (0, 10)
 
 all_genres = sorted(
-    {g for sub in df["GenreList"].dropna() for g in sub if g}
+    set(
+        g
+        for sub in df.get("GenreList", pd.Series([])).dropna()
+        for g in sub
+        if g
+    )
 )
-
 selected_genres = st.sidebar.multiselect(
     "Géneros (todas las seleccionadas deben estar presentes)",
     options=all_genres
@@ -872,10 +893,10 @@ selected_directors = st.sidebar.multiselect(
 )
 
 order_by = st.sidebar.selectbox(
-    "Ordenar tabla por",
-    ["Your Rating", "IMDb Rating", "Year", "Title"]
+    "Ordenar por",
+    ["Your Rating", "IMDb Rating", "Year", "Title", "Aleatorio"]
 )
-order_asc = st.sidebar.checkbox("Orden ascendente (tabla)", value=False)
+order_asc = st.sidebar.checkbox("Orden ascendente", value=False)
 
 # ----------------- Aplicar filtros básicos -----------------
 
@@ -943,14 +964,22 @@ def apply_search(df_in, query):
     if not query:
         return df_in
     q = query.strip().lower()
+    if "SearchText" not in df_in.columns:
+        return df_in
     return df_in[df_in["SearchText"].str.contains(q, na=False)]
 
 
 filtered_view = apply_search(filtered.copy(), search_query)
 
-# Orden de la tabla principal
-if order_by in filtered_view.columns:
+# Orden global según opción
+if order_by == "Aleatorio":
+    if not filtered_view.empty:
+        filtered_view = filtered_view.sample(frac=1, random_state=None)
+elif order_by in filtered_view.columns:
     filtered_view = filtered_view.sort_values(order_by, ascending=order_asc)
+
+# Selector de detalle desde la tabla
+detail_title = None
 
 # ----------------- TABS PRINCIPALES -----------------
 
@@ -1014,88 +1043,325 @@ with tab_catalog:
         mime="text/csv",
     )
 
+    # Selector de detalle asociado a la tabla
+    if not filtered_view.empty:
+        opciones_detalle = ["(ninguna)"] + [
+            f"{row['Title']} ({fmt_year(row['Year'])})"
+            for _, row in filtered_view.iterrows()
+        ]
+        seleccion = st.selectbox(
+            "Selecciona una película de la tabla para ver su ficha abajo:",
+            opciones_detalle,
+            index=0
+        )
+        if seleccion != "(ninguna)":
+            titulo_sel = seleccion.rsplit(" (", 1)[0]
+            detail_title = titulo_sel
+
     # ============================================================
-    #        GALERÍA PRINCIPAL: TARJETAS PAGINADAS (CATÁLOGO)
+    #              DETALLE DE PELÍCULAS (TARJETAS)
     # ============================================================
 
     st.markdown("---")
-    st.markdown("## 🎞 Galería de películas (tarjetas paginadas)")
+    st.markdown("## 🎞 Detalle de películas: pósters + información completa")
 
     if filtered_view.empty:
         st.info("No hay resultados bajo los filtros y la búsqueda actual.")
     else:
-        # Modos de orden específicos para la galería
-        gallery_sort_mode = st.selectbox(
-            "Modo de orden de la galería",
-            [
-                "Mi nota (descendente)",
-                "IMDb (descendente)",
-                "Año (nuevo → antiguo)",
-                "Año (antiguo → nuevo)",
-                "Título (A → Z)",
-                "Aleatorio"
-            ],
-            index=0
+        netflix_df = filtered_view.copy()
+
+        # Si selecciono una película en el selector, muestro solo esa
+        if detail_title:
+            netflix_df = netflix_df[
+                netflix_df["Title"].astype(str) == detail_title
+            ]
+
+        # Si no hay selección manual, priorizo por mi nota
+        if not detail_title and "Your Rating" in netflix_df.columns:
+            netflix_df = netflix_df.sort_values(
+                ["Your Rating", "Year"],
+                ascending=[False, True]
+            )
+
+        netflix_df = netflix_df.head(max_netflix_items)
+
+        st.write(
+            f"Mostrando hasta {len(netflix_df)} películas en tarjetas de detalle "
+            f"con mi nota, IMDb, TMDb, premios y streaming en Chile."
         )
 
-        gallery_df = filtered_view.copy()
+        cols = st.columns(3)  # 3 columnas, mejor para pantallas medianas/chicas
 
-        if gallery_sort_mode == "Mi nota (descendente)" and "Your Rating" in gallery_df.columns:
-            gallery_df = gallery_df.sort_values(
-                ["Your Rating", "IMDb Rating", "Year"],
-                ascending=[False, False, False]
-            )
-        elif gallery_sort_mode == "IMDb (descendente)" and "IMDb Rating" in gallery_df.columns:
-            gallery_df = gallery_df.sort_values(
-                ["IMDb Rating", "Your Rating", "Year"],
-                ascending=[False, False, False]
-            )
-        elif gallery_sort_mode == "Año (nuevo → antiguo)" and "Year" in gallery_df.columns:
-            gallery_df = gallery_df.sort_values("Year", ascending=False)
-        elif gallery_sort_mode == "Año (antiguo → nuevo)" and "Year" in gallery_df.columns:
-            gallery_df = gallery_df.sort_values("Year", ascending=True)
-        elif gallery_sort_mode == "Título (A → Z)" and "Title" in gallery_df.columns:
-            gallery_df = gallery_df.sort_values("Title", ascending=True)
-        elif gallery_sort_mode == "Aleatorio":
-            gallery_df = gallery_df.sample(frac=1, random_state=None)
+        for i, (_, row) in enumerate(netflix_df.iterrows()):
+            col = cols[i % 3]
+            with col:
+                titulo = row.get("Title", "Sin título")
+                year = row.get("Year", "")
+                nota = row.get("Your Rating", "")
+                imdb_rating = row.get("IMDb Rating", "")
+                genres = row.get("Genres", "")
+                directors = row.get("Directors", "")
+                url = row.get("URL", "")
 
-        total_pelis = len(gallery_df)
+                base_rating = nota if pd.notna(nota) else imdb_rating
+                border_color, glow_color = get_rating_colors(base_rating)
 
+                # TMDb: una sola llamada para póster + rating + id
+                tmdb_info = get_tmdb_basic_info(titulo, year)
+                if tmdb_info:
+                    poster_url = tmdb_info.get("poster_url")
+                    tmdb_rating = tmdb_info.get("vote_average")
+                    tmdb_id = tmdb_info.get("id")
+                    availability = get_tmdb_providers(tmdb_id, country="CL")
+                else:
+                    poster_url = None
+                    tmdb_rating = None
+                    availability = None
+
+                if isinstance(poster_url, str) and poster_url:
+                    try:
+                        st.image(poster_url)
+                    except Exception:
+                        st.write("Sin póster")
+                else:
+                    st.write("Sin póster")
+
+                year_str = f" ({int(year)})" if pd.notna(year) else ""
+                nota_str = f"⭐ Mi nota: {fmt_rating(nota)}" if pd.notna(nota) else ""
+                imdb_str = f"IMDb: {fmt_rating(imdb_rating)}" if pd.notna(imdb_rating) else ""
+
+                tmdb_str = (
+                    f"TMDb: {fmt_rating(tmdb_rating)}"
+                    if tmdb_rating is not None else "TMDb: N/A"
+                )
+
+                # Premios (OMDb) controlados por checkbox
+                if show_awards:
+                    awards = get_omdb_awards(titulo, year)
+                else:
+                    awards = None
+
+                if not show_awards:
+                    awards_text = "Premios no consultados (OMDb desactivado)."
+                elif awards is None:
+                    awards_text = "Sin datos de premios (OMDb)."
+                elif isinstance(awards, dict) and "error" in awards:
+                    awards_text = f"Error OMDb: {awards['error']}"
+                else:
+                    base_parts = []
+                    if awards.get("oscars", 0):
+                        base_parts.append(f"🏆 {awards['oscars']} Oscar(s)")
+                    if awards.get("emmys", 0):
+                        base_parts.append(f"📺 {awards['emmys']} Emmy(s)")
+                    if awards.get("baftas", 0):
+                        base_parts.append(f"🎭 {awards['baftas']} BAFTA(s)")
+                    if awards.get("golden_globes", 0):
+                        base_parts.append(f"🌐 {awards['golden_globes']} Globo(s) de Oro")
+                    if awards.get("palme_dor", False):
+                        base_parts.append("🌴 Palma de Oro")
+
+                    extra_parts = []
+                    if awards.get("oscars_nominated", 0):
+                        extra_parts.append(f"🎬 Nominada a {awards['oscars_nominated']} Oscar(s)")
+                    if awards.get("total_wins", 0):
+                        extra_parts.append(f"{awards['total_wins']} premios totales")
+                    if awards.get("total_nominations", 0):
+                        extra_parts.append(f"{awards['total_nominations']} nominaciones totales")
+
+                    parts = base_parts + extra_parts
+                    if not parts:
+                        awards_text = "Sin grandes premios detectados."
+                    else:
+                        awards_text = " · ".join(parts)
+
+                    if awards.get("raw"):
+                        awards_text += (
+                            f"<br><span style='font-size:0.75rem;color:#9ca3af;'>"
+                            f"OMDb: {awards['raw']}</span>"
+                        )
+
+                if availability is None:
+                    platforms = []
+                    link = None
+                else:
+                    platforms = availability.get("platforms") or []
+                    link = availability.get("link")
+
+                platforms_str = ", ".join(platforms) if platforms else "Sin datos para Chile (CL)"
+                link_html = (
+                    f'<a href="{link}" target="_blank">Ver streaming en TMDb (CL)</a>'
+                    if link else "Sin enlace de streaming disponible"
+                )
+
+                imdb_link_html = (
+                    f'<a href="{url}" target="_blank">Ver en IMDb</a>'
+                    if isinstance(url, str) and url.startswith("http")
+                    else ""
+                )
+
+                reseñas_url = get_spanish_review_link(titulo, year)
+                reseñas_html = (
+                    f'<a href="{reseñas_url}" target="_blank">Reseñas en español</a>'
+                    if reseñas_url else ""
+                )
+
+                info_html = f"""
+                <div class="movie-card" style="
+                    border-color: {border_color};
+                    box-shadow:
+                        0 0 0 1px rgba(15,23,42,0.9),
+                        0 0 20px {glow_color};
+                    padding: 10px 10px 8px 10px;
+                    margin-top: 8px;
+                ">
+                  <div class="movie-title">{titulo}{year_str}</div>
+                  <div class="movie-sub">
+                    {nota_str}<br>
+                    {imdb_str}<br>
+                    {tmdb_str}<br>
+                    {f"<b>Géneros:</b> {genres}<br>" if isinstance(genres, str) and genres else ""}
+                    {f"<b>Director(es):</b> {directors}<br>" if isinstance(directors, str) and directors else ""}
+                    <b>Premios:</b> {awards_text}<br>
+                    <b>Streaming (CL):</b> {platforms_str}<br>
+                    {link_html}<br>
+                    {imdb_link_html}<br>
+                    <b>Reseñas:</b> {reseñas_html}
+                  </div>
+                </div>
+                """
+                st.markdown(info_html, unsafe_allow_html=True)
+
+    # ============================================================
+    #                        MIS FAVORITAS
+    # ============================================================
+
+    st.markdown("---")
+    st.markdown("## ⭐ Mis favoritas (nota ≥ 9) con filtros + búsqueda")
+
+    with st.expander("Ver mis favoritas", expanded=False):
+        if "Your Rating" in filtered_view.columns:
+            fav = filtered_view[filtered_view["Your Rating"] >= 9].copy()
+            if not fav.empty:
+                fav = fav.sort_values(["Your Rating", "Year"], ascending=[False, True])
+                fav = fav.head(12)
+
+                for _, row in fav.iterrows():
+                    titulo = row.get("Title", "Sin título")
+                    year = row.get("Year", "")
+                    nota = row.get("Your Rating", "")
+                    imdb_rating = row.get("IMDb Rating", "")
+                    genres = row.get("Genres", "")
+                    directors = row.get("Directors", "")
+                    url = row.get("URL", "")
+
+                    border_color, glow_color = get_rating_colors(nota)
+
+                    etiqueta = f"{titulo}"
+                    if pd.notna(nota):
+                        etiqueta = f"{int(nota)}/10 — {titulo}"
+                    if pd.notna(year):
+                        etiqueta += f" ({int(year)})"
+
+                    st.markdown(
+                        f"""
+                        <div class="movie-card" style="
+                            border-color: {border_color};
+                            box-shadow:
+                                0 0 0 1px rgba(15,23,42,0.9),
+                                0 0 24px {glow_color};
+                            margin-bottom: 22px;
+                        ">
+                          <div class="movie-title">{etiqueta}</div>
+                          <div class="movie-sub">
+                        """,
+                        unsafe_allow_html=True,
+                    )
+
+                    col_img, col_info = st.columns([1, 3])
+
+                    with col_img:
+                        if show_posters_fav:
+                            tmdb_info = get_tmdb_basic_info(titulo, year)
+                            poster_url = tmdb_info.get("poster_url") if tmdb_info else None
+                            if isinstance(poster_url, str) and poster_url:
+                                try:
+                                    st.image(poster_url)
+                                except Exception:
+                                    st.write("Sin póster")
+                            else:
+                                st.write("Sin póster")
+                        else:
+                            st.write("Póster desactivado (actívalo en la barra lateral).")
+
+                    with col_info:
+                        if isinstance(genres, str) and genres:
+                            st.write(f"**Géneros:** {genres}")
+                        if isinstance(directors, str) and directors:
+                            st.write(f"**Director(es):** {directors}")
+                        if pd.notna(imdb_rating):
+                            st.write(f"**IMDb:** {fmt_rating(imdb_rating)}")
+                        if isinstance(url, str) and url.startswith("http"):
+                            st.write(f"[Ver en IMDb]({url})")
+                        reseñas_url = get_spanish_review_link(titulo, year)
+                        if reseñas_url:
+                            st.write(f"[Reseñas en español]({reseñas_url})")
+
+                    st.markdown(
+                        "</div></div>",
+                        unsafe_allow_html=True,
+                    )
+            else:
+                st.write("No hay películas con nota ≥ 9 bajo estos filtros + búsqueda.")
+        else:
+            st.write("No se encontró la columna 'Your Rating' en el CSV.")
+
+    # ============================================================
+    #               GALERÍA VISUAL PAGINADA (CARÁTULAS EN GRID)
+    # ============================================================
+
+    st.markdown("---")
+    st.markdown("## 🧱 Galería visual (pósters en grid por páginas)")
+
+    total_pelis = len(filtered_view)
+
+    if total_pelis == 0:
+        st.info("No hay películas bajo los filtros + búsqueda actuales para la galería.")
+    else:
         page_size = st.slider(
             "Películas por página en la galería",
-            min_value=6,
-            max_value=36,
-            value=18,
-            step=6,
-            key="gallery_page_size_cards"
+            min_value=12,
+            max_value=60,
+            value=24,
+            step=12,
+            key="gallery_page_size"
         )
 
-        num_pages = math.ceil(total_pelis / page_size)
+        num_pages = max(math.ceil(total_pelis / page_size), 1)
 
         col_page_info_1, col_page_info_2 = st.columns([2, 1])
         with col_page_info_1:
             st.caption(
-                f"Mostrando tarjetas de tus películas filtradas: "
+                f"Mostrando pósters de tus películas filtradas: "
                 f"{total_pelis} en total · {page_size} por página."
             )
         with col_page_info_2:
             current_page = st.number_input(
                 "Página",
                 min_value=1,
-                max_value=max(num_pages, 1),
+                max_value=num_pages,
                 value=1,
                 step=1,
-                key="gallery_current_page_cards"
+                key="gallery_current_page"
             )
 
         start_idx = (current_page - 1) * page_size
         end_idx = start_idx + page_size
-        page_df = gallery_df.iloc[start_idx:end_idx]
+        page_df = filtered_view.iloc[start_idx:end_idx].copy()
 
         st.caption(f"Página {current_page} de {num_pages}")
 
-        # Construimos toda la grilla en HTML para que el grid sea perfecto
-        cards_html = '<div class="movie-grid">'
+        # Construimos la galería como HTML completo para que no se descuadre
+        cards_html = ['<div class="movie-gallery-grid">']
 
         for _, row in page_df.iterrows():
             titulo = row.get("Title", "Sin título")
@@ -1120,12 +1386,25 @@ with tab_catalog:
                 tmdb_rating = None
                 availability = None
 
-            poster_html = get_poster_html(poster_url, alt_text=titulo)
+            if isinstance(poster_url, str) and poster_url:
+                poster_html = f"""
+                <div class="movie-poster-frame">
+                  <img src="{poster_url}" alt="{titulo}" class="movie-poster-img">
+                </div>
+                """
+            else:
+                poster_html = """
+                <div class="movie-poster-frame">
+                  <div class="movie-poster-placeholder">
+                    <div class="film-reel-icon">🎞️</div>
+                    <div class="film-reel-text">Sin póster</div>
+                  </div>
+                </div>
+                """
 
-            year_str = f" ({int(year)})" if pd.notna(year) else ""
+            year_str = f" ({fmt_year(year)})" if pd.notna(year) else ""
             nota_str = f"⭐ Mi nota: {fmt_rating(nota)}" if pd.notna(nota) else ""
             imdb_str = f"IMDb: {fmt_rating(imdb_rating)}" if pd.notna(imdb_rating) else ""
-
             tmdb_str = (
                 f"TMDb: {fmt_rating(tmdb_rating)}"
                 if tmdb_rating is not None else "TMDb: N/A"
@@ -1201,6 +1480,15 @@ with tab_catalog:
                 if reseñas_url else ""
             )
 
+            genres_html = (
+                f"<b>Géneros:</b> {genres}<br>"
+                if isinstance(genres, str) and genres else ""
+            )
+            directors_html = (
+                f"<b>Director(es):</b> {directors}<br>"
+                if isinstance(directors, str) and directors else ""
+            )
+
             card_html = f"""
             <div class="movie-card movie-card-grid" style="
                 border-color: {border_color};
@@ -1214,8 +1502,8 @@ with tab_catalog:
                 {nota_str}<br>
                 {imdb_str}<br>
                 {tmdb_str}<br>
-                {f"<b>Géneros:</b> {genres}<br>" if isinstance(genres, str) and genres else ""}
-                {f"<b>Director(es):</b> {directors}<br>" if isinstance(directors, str) and directors else ""}
+                {genres_html}
+                {directors_html}
                 <b>Premios:</b> {awards_text}<br>
                 <b>Streaming (CL):</b> {platforms_str}<br>
                 {link_html}<br>
@@ -1224,94 +1512,11 @@ with tab_catalog:
               </div>
             </div>
             """
+            cards_html.append(card_html)
 
-            cards_html += card_html
-
-        cards_html += "</div>"
-
-        st.markdown(cards_html, unsafe_allow_html=True)
-
-    # ============================================================
-    #                        MIS FAVORITAS
-    # ============================================================
-
-    st.markdown("---")
-    st.markdown("## ⭐ Mis favoritas (nota ≥ 9) con filtros + búsqueda")
-
-    with st.expander("Ver mis favoritas", expanded=False):
-        if "Your Rating" in filtered_view.columns:
-            fav = filtered_view[filtered_view["Your Rating"] >= 9].copy()
-            if not fav.empty:
-                fav = fav.sort_values(["Your Rating", "Year"], ascending=[False, True])
-                fav = fav.head(12)
-
-                for _, row in fav.iterrows():
-                    titulo = row.get("Title", "Sin título")
-                    year = row.get("Year", "")
-                    nota = row.get("Your Rating", "")
-                    imdb_rating = row.get("IMDb Rating", "")
-                    genres = row.get("Genres", "")
-                    directors = row.get("Directors", "")
-                    url = row.get("URL", "")
-
-                    border_color, glow_color = get_rating_colors(nota)
-
-                    etiqueta = f"{titulo}"
-                    if pd.notna(nota):
-                        etiqueta = f"{int(nota)}/10 — {titulo}"
-                    if pd.notna(year):
-                        etiqueta += f" ({int(year)})"
-
-                    st.markdown(
-                        f"""
-                        <div class="movie-card" style="
-                            border-color: {border_color};
-                            box-shadow:
-                                0 0 0 1px rgba(15,23,42,0.9),
-                                0 0 24px {glow_color};
-                            margin-bottom: 22px;
-                        ">
-                          <div class="movie-title">{etiqueta}</div>
-                          <div class="movie-sub">
-                        """,
-                        unsafe_allow_html=True,
-                    )
-
-                    col_img, col_info = st.columns([1, 3])
-
-                    with col_img:
-                        if show_posters_fav:
-                            tmdb_info = get_tmdb_basic_info(titulo, year)
-                            poster_url = tmdb_info.get("poster_url") if tmdb_info else None
-                            html_poster = get_poster_html(poster_url, alt_text=titulo)
-                            st.markdown(html_poster, unsafe_allow_html=True)
-                        else:
-                            st.markdown(
-                                render_poster_placeholder("Póster desactivado"),
-                                unsafe_allow_html=True,
-                            )
-
-                    with col_info:
-                        if isinstance(genres, str) and genres:
-                            st.write(f"**Géneros:** {genres}")
-                        if isinstance(directors, str) and directors:
-                            st.write(f"**Director(es):** {directors}")
-                        if pd.notna(imdb_rating):
-                            st.write(f"**IMDb:** {fmt_rating(imdb_rating)}")
-                        if isinstance(url, str) and url.startswith("http"):
-                            st.write(f"[Ver en IMDb]({url})")
-                        reseñas_url = get_spanish_review_link(titulo, year)
-                        if reseñas_url:
-                            st.write(f"[Reseñas en español]({reseñas_url})")
-
-                    st.markdown(
-                        "</div></div>",
-                        unsafe_allow_html=True,
-                    )
-            else:
-                st.write("No hay películas con nota ≥ 9 bajo estos filtros + búsqueda.")
-        else:
-            st.write("No se encontró la columna 'Your Rating' en el CSV.")
+        cards_html.append("</div>")
+        gallery_html = "\n".join(cards_html)
+        st.markdown(gallery_html, unsafe_allow_html=True)
 
 # ============================================================
 #                     TAB 2: ANÁLISIS
@@ -1521,6 +1726,10 @@ with tab_analysis:
                             genre_stats["mean"] = genre_stats["mean"].round(2)
                             genre_stats["std"] = genre_stats["std"].fillna(0).round(2)
 
+                            st.write(
+                                "Géneros ordenados por mi nota media. "
+                                "La desviación estándar (σ) indica cuánto varían mis notas dentro del género."
+                            )
                             st.dataframe(
                                 genre_stats.rename(
                                     columns={
@@ -1555,6 +1764,11 @@ with tab_analysis:
                         st.metric(
                             "Diferencia media (Mi nota - IMDb)",
                             f"{media_diff:.2f}"
+                        )
+
+                        st.write(
+                            "Valores positivos ⇒ suelo puntuar **más alto** que IMDb. "
+                            "Valores negativos ⇒ suelo ser **más duro** que IMDb."
                         )
 
                         hist = (
@@ -1625,6 +1839,7 @@ with tab_analysis:
                     )
                     if not decade_diff.empty:
                         decade_diff["Decade"] = decade_diff["Decade"].astype(int)
+                        st.write("**Diferencia media por década (Mi nota - IMDb):**")
                         st.dataframe(
                             decade_diff.rename(columns={"Decade": "Década"}),
                             hide_index=True,
@@ -1754,6 +1969,7 @@ with tab_analysis:
                         st.markdown("### Películas con Palma de Oro")
                         st.dataframe(
                             palme[["Película", "Año", "Oscars ganados", "Premios totales"]],
+
                             hide_index=True,
                             use_container_width=True
                         )
@@ -1880,7 +2096,6 @@ with tab_analysis:
                     )
                     st.dataframe(raw_df, hide_index=True, use_container_width=True)
 
-
 # ============================================================
 #                     TAB 3: LISTA AFI
 # ============================================================
@@ -1893,6 +2108,17 @@ with tab_afi:
         afi_df = pd.DataFrame(AFI_LIST)
         afi_df["NormTitle"] = afi_df["Title"].apply(normalize_title)
         afi_df["YearInt"] = afi_df["Year"]
+
+        if "YearInt" not in df.columns:
+            if "Year" in df.columns:
+                df["YearInt"] = df["Year"].fillna(-1).astype(int)
+            else:
+                df["YearInt"] = -1
+        if "NormTitle" not in df.columns:
+            if "Title" in df.columns:
+                df["NormTitle"] = df["Title"].apply(normalize_title)
+            else:
+                df["NormTitle"] = ""
 
         def find_match(afi_norm, year, df_full):
             candidates = df_full[df_full["YearInt"] == year]
@@ -1982,7 +2208,6 @@ with tab_afi:
             hide_index=True,
             use_container_width=True
         )
-
 
 # ============================================================
 #                     TAB 4: ¿QUÉ VER HOY?
@@ -2137,8 +2362,13 @@ with tab_what:
                 col_img, col_info = st.columns([1, 3])
 
                 with col_img:
-                    html_poster = get_poster_html(poster_url, alt_text=titulo)
-                    st.markdown(html_poster, unsafe_allow_html=True)
+                    if isinstance(poster_url, str) and poster_url:
+                        try:
+                            st.image(poster_url)
+                        except Exception:
+                            st.write("Sin póster")
+                    else:
+                        st.write("Sin póster")
 
                 with col_info:
                     st.markdown(

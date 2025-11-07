@@ -498,6 +498,29 @@ def get_spanish_review_link(title, year=None):
     return "https://www.google.com/search?q=" + quote_plus(q)
 
 
+def render_poster_placeholder(text="Sin póster"):
+    """Cuadro negro del tamaño aproximado del póster para mantener la grilla."""
+    st.markdown(
+        f"""
+        <div style="
+            width: 100%;
+            aspect-ratio: 2 / 3;
+            background: #020617;
+            border-radius: 10px;
+            border: 1px solid rgba(148,163,184,0.6);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.7rem;
+            color: #9ca3af;
+            margin-bottom: 6px;
+        ">
+            {text}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
 # ----------------- Carga de datos -----------------
 
 st.sidebar.header("📂 Datos")
@@ -566,7 +589,7 @@ st.markdown(
     /* Contenedor principal responsivo */
     .main .block-container {{
         max-width: 1200px;
-        padding-top: 1.5rem;
+        padding-top: 4.5rem;   /* más espacio para que no se corte el título */
         padding-bottom: 3rem;
     }}
 
@@ -608,6 +631,7 @@ st.markdown(
         background: linear-gradient(90deg, var(--accent), var(--accent-alt));
         -webkit-background-clip: text;
         color: transparent;
+        margin-top: 0.5rem !important;
         margin-bottom: 0.1rem;
         white-space: normal !important;
         word-wrap: break-word !important;
@@ -797,10 +821,10 @@ selected_directors = st.sidebar.multiselect(
 )
 
 order_by = st.sidebar.selectbox(
-    "Ordenar por",
+    "Ordenar tabla por",
     ["Your Rating", "IMDb Rating", "Year", "Title"]
 )
-order_asc = st.sidebar.checkbox("Orden ascendente", value=False)
+order_asc = st.sidebar.checkbox("Orden ascendente (tabla)", value=False)
 
 # ----------------- Aplicar filtros básicos -----------------
 
@@ -873,6 +897,7 @@ def apply_search(df_in, query):
 
 filtered_view = apply_search(filtered.copy(), search_query)
 
+# Orden de la tabla principal
 if order_by in filtered_view.columns:
     filtered_view = filtered_view.sort_values(order_by, ascending=order_asc)
 
@@ -948,7 +973,42 @@ with tab_catalog:
     if filtered_view.empty:
         st.info("No hay resultados bajo los filtros y la búsqueda actual.")
     else:
-        total_pelis = len(filtered_view)
+        # Modos de orden específicos para la galería
+        gallery_sort_mode = st.selectbox(
+            "Modo de orden de la galería",
+            [
+                "Mi nota (descendente)",
+                "IMDb (descendente)",
+                "Año (nuevo → antiguo)",
+                "Año (antiguo → nuevo)",
+                "Título (A → Z)",
+                "Aleatorio"
+            ],
+            index=0
+        )
+
+        gallery_df = filtered_view.copy()
+
+        if gallery_sort_mode == "Mi nota (descendente)" and "Your Rating" in gallery_df.columns:
+            gallery_df = gallery_df.sort_values(
+                ["Your Rating", "IMDb Rating", "Year"],
+                ascending=[False, False, False]
+            )
+        elif gallery_sort_mode == "IMDb (descendente)" and "IMDb Rating" in gallery_df.columns:
+            gallery_df = gallery_df.sort_values(
+                ["IMDb Rating", "Your Rating", "Year"],
+                ascending=[False, False, False]
+            )
+        elif gallery_sort_mode == "Año (nuevo → antiguo)" and "Year" in gallery_df.columns:
+            gallery_df = gallery_df.sort_values("Year", ascending=False)
+        elif gallery_sort_mode == "Año (antiguo → nuevo)" and "Year" in gallery_df.columns:
+            gallery_df = gallery_df.sort_values("Year", ascending=True)
+        elif gallery_sort_mode == "Título (A → Z)" and "Title" in gallery_df.columns:
+            gallery_df = gallery_df.sort_values("Title", ascending=True)
+        elif gallery_sort_mode == "Aleatorio":
+            gallery_df = gallery_df.sample(frac=1, random_state=None)
+
+        total_pelis = len(gallery_df)
 
         page_size = st.slider(
             "Películas por página en la galería",
@@ -979,7 +1039,7 @@ with tab_catalog:
 
         start_idx = (current_page - 1) * page_size
         end_idx = start_idx + page_size
-        page_df = filtered_view.iloc[start_idx:end_idx]
+        page_df = gallery_df.iloc[start_idx:end_idx]
 
         st.caption(f"Página {current_page} de {num_pages}")
 
@@ -1014,9 +1074,9 @@ with tab_catalog:
                     try:
                         st.image(poster_url)
                     except Exception:
-                        st.write("Sin póster")
+                        render_poster_placeholder()
                 else:
-                    st.write("Sin póster")
+                    render_poster_placeholder()
 
                 year_str = f" ({int(year)})" if pd.notna(year) else ""
                 nota_str = f"⭐ Mi nota: {fmt_rating(nota)}" if pd.notna(nota) else ""
@@ -1179,11 +1239,11 @@ with tab_catalog:
                                 try:
                                     st.image(poster_url)
                                 except Exception:
-                                    st.write("Sin póster")
+                                    render_poster_placeholder()
                             else:
-                                st.write("Sin póster")
+                                render_poster_placeholder()
                         else:
-                            st.write("Póster desactivado (actívalo en la barra lateral).")
+                            render_poster_placeholder("Póster desactivado")
 
                     with col_info:
                         if isinstance(genres, str) and genres:
@@ -1415,10 +1475,6 @@ with tab_analysis:
                             genre_stats["mean"] = genre_stats["mean"].round(2)
                             genre_stats["std"] = genre_stats["std"].fillna(0).round(2)
 
-                            st.write(
-                                "Géneros ordenados por mi nota media. "
-                                "La desviación estándar (σ) indica cuánto varían mis notas dentro del género."
-                            )
                             st.dataframe(
                                 genre_stats.rename(
                                     columns={
@@ -1453,11 +1509,6 @@ with tab_analysis:
                         st.metric(
                             "Diferencia media (Mi nota - IMDb)",
                             f"{media_diff:.2f}"
-                        )
-
-                        st.write(
-                            "Valores positivos ⇒ suelo puntuar **más alto** que IMDb. "
-                            "Valores negativos ⇒ suelo ser **más duro** que IMDb."
                         )
 
                         hist = (
@@ -1528,7 +1579,6 @@ with tab_analysis:
                     )
                     if not decade_diff.empty:
                         decade_diff["Decade"] = decade_diff["Decade"].astype(int)
-                        st.write("**Diferencia media por década (Mi nota - IMDb):**")
                         st.dataframe(
                             decade_diff.rename(columns={"Decade": "Década"}),
                             hide_index=True,
@@ -2045,9 +2095,9 @@ with tab_what:
                         try:
                             st.image(poster_url)
                         except Exception:
-                            st.write("Sin póster")
+                            render_poster_placeholder()
                     else:
-                        st.write("Sin póster")
+                        render_poster_placeholder()
 
                 with col_info:
                     st.markdown(

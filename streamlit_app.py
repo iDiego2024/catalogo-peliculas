@@ -16,11 +16,16 @@ st.set_page_config(
 
 st.title("🎥 Mi catálogo de películas (IMDb)")
 
-# ----------------- Config TMDb -----------------
+# ----------------- Config APIs externas -----------------
 
 TMDB_API_KEY = st.secrets.get("TMDB_API_KEY", None)
 TMDB_SEARCH_URL = "https://api.themoviedb.org/3/search/movie"
 TMDB_IMAGE_BASE = "https://image.tmdb.org/t/p/w342"
+
+TMDB_SIMILAR_URL_TEMPLATE = "https://api.themoviedb.org/3/movie/{movie_id}/similar"
+
+YOUTUBE_API_KEY = st.secrets.get("YOUTUBE_API_KEY", None)
+YOUTUBE_SEARCH_URL = "https://www.googleapis.com/youtube/v3/search"
 
 # ----------------- Lista AFI 100 Years...100 Movies (10th Anniversary Edition) -----------------
 
@@ -281,6 +286,87 @@ def get_tmdb_providers(tmdb_id, country="CL"):
 
 
 @st.cache_data
+def get_tmdb_similar_movies(tmdb_id, language="es-ES", max_results=10):
+    """
+    Devuelve una lista de películas similares según TMDb para un id dado.
+    Cada elemento es un dict: {title, year, vote_average, poster_url, id}
+    """
+    if TMDB_API_KEY is None or not tmdb_id:
+        return []
+
+    try:
+        url = TMDB_SIMILAR_URL_TEMPLATE.format(movie_id=tmdb_id)
+        params = {"api_key": TMDB_API_KEY, "language": language, "page": 1}
+        r = requests.get(url, params=params, timeout=4)
+        if r.status_code != 200:
+            return []
+        data = r.json()
+        results = data.get("results", [])[:max_results]
+        out = []
+        for m in results:
+            title = m.get("title") or m.get("name")
+            date_str = m.get("release_date") or ""
+            year = None
+            if date_str:
+                try:
+                    year = int(date_str[:4])
+                except Exception:
+                    year = None
+            out.append({
+                "id": m.get("id"),
+                "title": title,
+                "year": year,
+                "vote_average": m.get("vote_average"),
+                "poster_url": f"{TMDB_IMAGE_BASE}{m['poster_path']}" if m.get("poster_path") else None,
+            })
+        return out
+    except Exception:
+        return []
+
+
+@st.cache_data
+def get_youtube_trailer_url(title, year=None, language_hint="es"):
+    """
+    Devuelve la URL de YouTube del primer resultado tipo tráiler para ese título.
+    Usa la API de YouTube Data v3 (clave en YOUTUBE_API_KEY).
+    """
+    if YOUTUBE_API_KEY is None:
+        return None
+    if not title or pd.isna(title):
+        return None
+
+    q = f"{title} trailer"
+    try:
+        if year is not None and not pd.isna(year):
+            q += f" {int(float(year))}"
+    except Exception:
+        pass
+
+    params = {
+        "key": YOUTUBE_API_KEY,
+        "part": "snippet",
+        "q": q,
+        "type": "video",
+        "maxResults": 1,
+        "videoEmbeddable": "true",
+        "regionCode": "CL",
+    }
+
+    try:
+        r = requests.get(YOUTUBE_SEARCH_URL, params=params, timeout=5)
+        if r.status_code != 200:
+            return None
+        data = r.json()
+        items = data.get("items", [])
+        if not items:
+            return None
+        vid = items[0]["id"]["videoId"]
+        return f"https://www.youtube.com/watch?v={vid}"
+    except Exception:
+        return None
+
+
+@st.cache_data
 def get_omdb_awards(title, year=None):
     """
     Info de premios desde OMDb.
@@ -496,6 +582,73 @@ def get_spanish_review_link(title, year=None):
     except Exception:
         pass
     return "https://www.google.com/search?q=" + quote_plus(q)
+
+
+def recommend_from_catalog(df_all, seed_row, top_n=5):
+    """
+    Recomendaciones inteligentes dentro de tu catálogo a partir de una película semilla.
+    Usa géneros, directores, año y notas para calcular una similitud simple.
+    """
+    if df_all.empty:
+        return pd.DataFrame()
+
+    candidates = df_all.copy()
+    if "Title" in candidates.columns and "Year" in candidates.columns:
+        candidates = candidates[
+            ~(
+                (candidates["Title"] == seed_row.get("Title")) &
+                (candidates["Year"] == seed_row.get("Year"))
+            )
+        ]
+
+    seed_genres = set(seed_row.get("GenreList") or [])
+    seed_dirs = {d.strip() for d in str(seed_row.get("Directors") or "").split(",") if d.strip()}
+    seed_year = seed_row.get("Year")
+    seed_rating = seed_row.get("Your Rating")
+
+    scores = []
+    for idx, r in candidates.iterrows():
+        g2 = set(r.get("GenreList") or [])
+        d2 = {d.strip() for d in str(r.get("Directors") or "").split(",") if d.strip()}
+        score = 0.0
+
+        # géneros compartidos
+        score += 2.0 * len(seed_genres & g2)
+
+        # directores compartidos
+        if seed_dirs & d2:
+            score += 3.0
+
+        # cercanía en año
+        y2 = r.get("Year")
+        if pd.notna(seed_year) and pd.notna(y2):
+            score -= min(abs(seed_year - y2) / 10.0, 3.0)
+
+        # similitud de tu nota
+        r2 = r.get("Your Rating")
+        if pd.notna(seed_rating) and pd.notna(r2):
+            score -= abs(seed_rating - r2) * 0.3
+
+        # pequeño boost por IMDb alta
+        imdb_r2 = r.get("IMDb Rating")
+        if pd.notna(imdb_r2):
+            score += (float(imdb_r2) - 6.5) * 0.2
+
+        scores.append((idx, score))
+
+    if not scores:
+        return pd.DataFrame()
+
+    scores_sorted = sorted(scores, key=lambda x: x[1], reverse=True)
+    top_indices = [idx for idx, sc in scores_sorted[:top_n] if sc > 0]
+
+    if not top_indices:
+        return pd.DataFrame()
+
+    recs = df_all.loc[top_indices].copy()
+    score_map = dict(scores)
+    recs["similarity_score"] = recs.index.map(score_map.get)
+    return recs
 
 
 # ----------------- Carga de datos -----------------
@@ -831,6 +984,12 @@ show_posters_fav = st.sidebar.checkbox(
 st.sidebar.header("🌐 TMDb")
 use_tmdb_gallery = st.sidebar.checkbox(
     "Usar TMDb en la galería visual",
+    value=True
+)
+
+st.sidebar.header("🎬 Tráilers")
+show_trailers = st.sidebar.checkbox(
+    "Mostrar tráiler de YouTube (si hay API key)",
     value=True
 )
 
@@ -1337,6 +1496,11 @@ with tab_catalog:
                         reseñas_url = get_spanish_review_link(titulo, year)
                         if reseñas_url:
                             st.write(f"[Reseñas en español]({reseñas_url})")
+
+                        if show_trailers:
+                            trailer_url = get_youtube_trailer_url(titulo, year)
+                            if trailer_url:
+                                st.video(trailer_url)
 
                     st.markdown(
                         "</div></div>",
@@ -2038,7 +2202,8 @@ with tab_what:
 
     st.write(
         "Elijo una película de mi catálogo usando mis notas, "
-        "año de estreno y disponibilidad en streaming en Chile."
+        "año de estreno y disponibilidad en streaming en Chile, "
+        "y a partir de ahí genero recomendaciones dentro y fuera de mi lista."
     )
 
     with st.expander("Ver recomendación aleatoria según mi gusto", expanded=True):
@@ -2104,6 +2269,7 @@ with tab_what:
                     tmdb_rating = None
                     poster_url = None
                     availability = None
+                    tmdb_id = None
 
                 tmdb_str = (
                     f"TMDb: {fmt_rating(tmdb_rating)}"
@@ -2190,6 +2356,12 @@ with tab_what:
                     else:
                         st.write("Sin póster")
 
+                    if show_trailers:
+                        trailer_url = get_youtube_trailer_url(titulo, year)
+                        if trailer_url:
+                            st.markdown("#### 🎥 Tráiler")
+                            st.video(trailer_url)
+
                 with col_info:
                     y_str = fmt_year(year)
                     st.markdown(
@@ -2225,6 +2397,77 @@ with tab_what:
                     "Esta recomendación tiene en cuenta mi nota, la valoración global "
                     "y si puedo verla fácilmente en streaming en Chile."
                 )
+
+                # ----------------- Recomendaciones inteligentes dentro del catálogo -----------------
+
+                st.markdown("### 🎬 Recomendaciones dentro de mi catálogo")
+                recs_in = recommend_from_catalog(df, peli, top_n=5)
+                if recs_in.empty:
+                    st.caption("No encontré recomendaciones claras dentro de tu catálogo para esta película.")
+                else:
+                    mini = recs_in[["Title", "Year", "Your Rating", "IMDb Rating", "Genres"]].copy()
+                    mini["Year"] = mini["Year"].apply(fmt_year)
+                    mini["Your Rating"] = mini["Your Rating"].apply(fmt_rating)
+                    mini["IMDb Rating"] = mini["IMDb Rating"].apply(fmt_rating)
+                    mini = mini.rename(
+                        columns={
+                            "Title": "Película",
+                            "Year": "Año",
+                            "Your Rating": "Mi nota",
+                            "IMDb Rating": "IMDb",
+                            "Genres": "Géneros",
+                        }
+                    )
+                    st.dataframe(mini, hide_index=True, use_container_width=True)
+
+                # ----------------- Recomendaciones fuera del catálogo (TMDb similares) -----------------
+
+                st.markdown("### 🌍 Recomendaciones fuera de mi lista (TMDb similares)")
+                if tmdb_id is None:
+                    st.caption("No tengo id de TMDb para esta película, así que no puedo pedir similares externos.")
+                else:
+                    similars = get_tmdb_similar_movies(tmdb_id, language="es-ES", max_results=12)
+                    if not similars:
+                        st.caption("TMDb no devolvió recomendaciones similares para esta película.")
+                    else:
+                        # filtrar las que ya tienes en tu catálogo
+                        norm_titles_set = set(df["NormTitle"])
+                        external_recs = []
+                        for m in similars:
+                            nt = normalize_title(m.get("title", ""))
+                            if nt and nt not in norm_titles_set:
+                                external_recs.append(m)
+                            if len(external_recs) >= 5:
+                                break
+
+                        if not external_recs:
+                            st.caption("Las recomendaciones similares de TMDb ya están en tu catálogo.")
+                        else:
+                            for m in external_recs:
+                                t = m.get("title", "Sin título")
+                                y = m.get("year")
+                                r_tmdb = m.get("vote_average")
+                                poster = m.get("poster_url")
+                                mid = m.get("id")
+                                tmdb_link = f"https://www.themoviedb.org/movie/{mid}" if mid else ""
+
+                                cols_ext = st.columns([1, 3])
+                                with cols_ext[0]:
+                                    if poster:
+                                        try:
+                                            st.image(poster)
+                                        except Exception:
+                                            st.write("Sin póster")
+                                    else:
+                                        st.write("Sin póster")
+                                with cols_ext[1]:
+                                    y_str2 = f"{y}" if y else ""
+                                    st.markdown(
+                                        f"**{t}** {f'({y_str2})' if y_str2 else ''}  "
+                                        f"· TMDb: {fmt_rating(r_tmdb)}"
+                                    )
+                                    if tmdb_link:
+                                        st.markdown(f"[Ver en TMDb]({tmdb_link})")
 
     st.markdown("---")
     st.markdown("### 📌 Otras sugerencias rápidas (según mis notas)")

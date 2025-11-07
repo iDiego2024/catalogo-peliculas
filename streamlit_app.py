@@ -4,6 +4,7 @@ import requests
 import random
 import altair as alt
 import re
+import math
 from urllib.parse import quote_plus
 
 # ----------------- Configuración general -----------------
@@ -1212,6 +1213,88 @@ with tab_catalog:
         else:
             st.write("No se encontró la columna 'Your Rating' en el CSV.")
 
+    # ============================================================
+    #               GALERÍA VISUAL PAGINADA (CARÁTULAS)
+    # ============================================================
+
+    st.markdown("---")
+    st.markdown("## 🧱 Galería visual (pósters por páginas)")
+
+    total_pelis = len(filtered_view)
+
+    if total_pelis == 0:
+        st.info("No hay películas bajo los filtros + búsqueda actuales para la galería.")
+    else:
+        page_size = st.slider(
+            "Películas por página en la galería",
+            min_value=20,
+            max_value=60,
+            value=30,
+            step=10,
+            key="gallery_page_size"
+        )
+
+        num_pages = math.ceil(total_pelis / page_size)
+
+        col_page_info_1, col_page_info_2 = st.columns([2, 1])
+        with col_page_info_1:
+            st.caption(
+                f"Mostrando pósters de tus películas filtradas: "
+                f"{total_pelis} en total · {page_size} por página."
+            )
+        with col_page_info_2:
+            current_page = st.number_input(
+                "Página",
+                min_value=1,
+                max_value=max(num_pages, 1),
+                value=1,
+                step=1,
+                key="gallery_current_page"
+            )
+
+        start_idx = (current_page - 1) * page_size
+        end_idx = start_idx + page_size
+        page_df = filtered_view.iloc[start_idx:end_idx]
+
+        st.caption(f"Página {current_page} de {num_pages}")
+
+        cols_gallery = st.columns(6)
+
+        for i, (_, row) in enumerate(page_df.iterrows()):
+            col = cols_gallery[i % 6]
+            with col:
+                titulo = row.get("Title", "Sin título")
+                year = row.get("Year", "")
+                nota = row.get("Your Rating", "")
+                url = row.get("URL", "")
+
+                tmdb_info = get_tmdb_basic_info(titulo, year)
+                poster_url = tmdb_info.get("poster_url") if tmdb_info else None
+
+                if isinstance(poster_url, str) and poster_url:
+                    st.image(poster_url, use_container_width=True)
+                else:
+                    st.write("Sin póster")
+
+                year_str = f" ({fmt_year(year)})" if pd.notna(year) else ""
+                nota_str = f" · ⭐ {fmt_rating(nota)}" if pd.notna(nota) else ""
+
+                st.markdown(
+                    f"**{titulo}**{year_str}{nota_str}",
+                    help="Título desde tu catálogo de IMDb"
+                )
+
+                enlaces = []
+
+                if isinstance(url, str) and url.startswith("http"):
+                    enlaces.append(f"[IMDb]({url})")
+
+                reseñas_url = get_spanish_review_link(titulo, year)
+                if reseñas_url:
+                    enlaces.append(f"[Reseñas ESP]({reseñas_url})")
+
+                if enlaces:
+                    st.markdown(" · ".join(enlaces))
 
 # ============================================================
 #                     TAB 2: ANÁLISIS

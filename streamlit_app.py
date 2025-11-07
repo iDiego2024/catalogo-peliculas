@@ -508,10 +508,10 @@ uploaded = st.sidebar.file_uploader(
 )
 
 if uploaded is not None:
-    df = load_data(uploaded)
+    df = load_data(uploaded).copy()
 else:
     try:
-        df = load_data("peliculas.csv")
+        df = load_data("peliculas.csv").copy()
     except FileNotFoundError:
         st.error(
             "No se encontró 'peliculas.csv' en el repositorio y no se subió archivo.\n\n"
@@ -776,13 +776,9 @@ else:
     rating_range = (0, 10)
 
 all_genres = sorted(
-    set(
-        g
-        for sub in df.get("GenreList", pd.Series([])).dropna()
-        for g in sub
-        if g
-    )
+    {g for sub in df["GenreList"].dropna() for g in sub if g}
 )
+
 selected_genres = st.sidebar.multiselect(
     "Géneros (todas las seleccionadas deben estar presentes)",
     options=all_genres
@@ -872,8 +868,6 @@ def apply_search(df_in, query):
     if not query:
         return df_in
     q = query.strip().lower()
-    if "SearchText" not in df_in.columns:
-        return df_in
     return df_in[df_in["SearchText"].str.contains(q, na=False)]
 
 
@@ -1895,17 +1889,6 @@ with tab_afi:
         afi_df = pd.DataFrame(AFI_LIST)
         afi_df["NormTitle"] = afi_df["Title"].apply(normalize_title)
         afi_df["YearInt"] = afi_df["Year"]
-
-        if "YearInt" not in df.columns:
-            if "Year" in df.columns:
-                df["YearInt"] = df["Year"].fillna(-1).astype(int)
-            else:
-                df["YearInt"] = -1
-        if "NormTitle" not in df.columns:
-            if "Title" in df.columns:
-                df["NormTitle"] = df["Title"].apply(normalize_title)
-            else:
-                df["NormTitle"] = ""
 
         def find_match(afi_norm, year, df_full):
             candidates = df_full[df_full["YearInt"] == year]

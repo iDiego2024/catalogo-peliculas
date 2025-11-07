@@ -475,6 +475,7 @@ def get_rating_colors(rating):
         return ("rgba(148,163,184,0.8)", "rgba(15,23,42,0.0)")
 
     if r >= 9:
+        # Verde esmeralda
         return ("#22c55e", "rgba(34,197,94,0.55)")
     elif r >= 8:
         return ("#0ea5e9", "rgba(14,165,233,0.55)")
@@ -530,15 +531,15 @@ if "Year" in df.columns:
 else:
     df["YearInt"] = -1
 
-# ----------------- Tema oscuro + CSS -----------------
+# ----------------- Tema oscuro + CSS (negro mate + glow esmeralda) -----------------
 
 primary_bg = "#020617"
 secondary_bg = "#020617"
 text_color = "#e5e7eb"
-card_bg = "rgba(15,23,42,0.9)"
-accent_color = "#eab308"
-accent_soft = "rgba(234,179,8,0.25)"
-accent_alt = "#38bdf8"
+card_bg = "rgba(10,10,10,0.95)"
+accent_color = "#22c55e"        # Verde esmeralda
+accent_soft = "rgba(34,197,94,0.25)"
+accent_alt = "#4ade80"          # Verde clarito
 
 st.markdown(
     f"""
@@ -558,7 +559,7 @@ st.markdown(
     }}
 
     html, body, .stApp {{
-        background: radial-gradient(circle at top left, #0f172a 0%, #020617 40%, #000000 100%);
+        background: radial-gradient(circle at top, #020617 0%, #020617 40%, #000000 100%);
         color: var(--text-color);
         font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
     }}
@@ -585,7 +586,7 @@ st.markdown(
     }}
 
     [data-testid="stSidebar"] > div:first-child {{
-        background: linear-gradient(180deg, rgba(15,23,42,0.98), rgba(15,23,42,0.90));
+        background: radial-gradient(circle at top left, rgba(15,23,42,0.98), rgba(0,0,0,0.98));
         border-right: 1px solid rgba(148,163,184,0.25);
         box-shadow: 0 0 30px rgba(0,0,0,0.7);
     }}
@@ -611,6 +612,9 @@ st.markdown(
         margin-bottom: 0.6rem;
         line-height: 1.25;
         text-align: left;
+        white-space: normal;
+        word-break: break-word;
+        overflow-wrap: anywhere;
     }}
 
     h2 {{
@@ -633,11 +637,11 @@ st.markdown(
     }}
 
     [data-testid="stMetric"] {{
-        background: radial-gradient(circle at top left, rgba(15,23,42,0.95), rgba(15,23,42,0.75));
+        background: radial-gradient(circle at top left, rgba(15,23,42,0.98), rgba(0,0,0,0.95));
         padding: 14px 16px;
         border-radius: 14px;
         border: 1px solid rgba(148,163,184,0.45);
-        box-shadow: 0 12px 30px rgba(15,23,42,0.7);
+        box-shadow: 0 12px 30px rgba(0,0,0,0.8);
         backdrop-filter: blur(10px);
     }}
 
@@ -657,39 +661,39 @@ st.markdown(
     [data-testid="stExpander"] {{
         border-radius: var(--radius-xl) !important;
         border: 1px solid rgba(148,163,184,0.5);
-        background: radial-gradient(circle at top left, rgba(15,23,42,0.98), rgba(15,23,42,0.85));
+        background: radial-gradient(circle at top left, rgba(15,23,42,0.98), rgba(0,0,0,0.92));
         margin-bottom: 1rem;
-        box-shadow: 0 12px 30px rgba(15,23,42,0.7);
+        box-shadow: 0 12px 30px rgba(0,0,0,0.9);
     }}
 
     button[kind="secondary"], button[kind="primary"], .stButton > button {{
         border-radius: 999px !important;
-        border: 1px solid rgba(250, 204, 21, 0.7) !important;
-        background: radial-gradient(circle at top left, rgba(234,179,8,0.25), rgba(15,23,42,1)) !important;
-        color: #fefce8 !important;
+        border: 1px solid rgba(34,197,94,0.8) !important;
+        background: radial-gradient(circle at top left, rgba(34,197,94,0.18), rgba(0,0,0,1)) !important;
+        color: #ecfdf5 !important;
         font-weight: 600 !important;
         letter-spacing: 0.08em;
         text-transform: uppercase;
         font-size: 0.75rem !important;
         padding: 0.45rem 1.2rem !important;
-        box-shadow: 0 10px 25px rgba(234,179,8,0.35);
+        box-shadow: 0 10px 25px rgba(34,197,94,0.45);
         transition: all 0.18s ease-out;
     }}
 
     button[kind="secondary"]:hover, button[kind="primary"]:hover, .stButton > button:hover {{
         transform: translateY(-1px);
         box-shadow:
-            0 0 0 1px rgba(250,204,21,0.7),
-            0 0 26px rgba(250,204,21,0.75);
+            0 0 0 1px rgba(34,197,94,0.7),
+            0 0 26px rgba(34,197,94,0.85);
     }}
 
     .movie-card {{
-        background: radial-gradient(circle at top left, rgba(15,23,42,0.9), rgba(15,23,42,0.85));
+        background: radial-gradient(circle at top left, rgba(15,23,42,0.96), rgba(0,0,0,0.98));
         border-radius: var(--radius-lg);
         padding: 14px 14px 12px 14px;
         margin-bottom: 14px;
         border: 1px solid rgba(148,163,184,0.45);
-        box-shadow: 0 18px 40px rgba(15,23,42,0.8);
+        box-shadow: 0 18px 40px rgba(0,0,0,0.9);
         backdrop-filter: blur(12px);
         position: relative;
         overflow: hidden;
@@ -706,9 +710,9 @@ st.markdown(
     .movie-card-grid:hover {{
         transform: translateY(-4px) scale(1.01);
         box-shadow:
-            0 0 0 1px rgba(250,204,21,0.7),
-            0 0 32px rgba(250,204,21,0.85);
-        border-color: #facc15 !important;
+            0 0 0 1px rgba(34,197,94,0.8),
+            0 0 32px rgba(34,197,94,0.95);
+        border-color: #22c55e !important;
     }}
 
     .movie-title {{
@@ -774,14 +778,14 @@ st.markdown(
         align-items: center;
         justify-content: center;
         background:
-            radial-gradient(circle at 15% 0%, rgba(250,204,21,0.12), rgba(15,23,42,1)),
-            radial-gradient(circle at 85% 100%, rgba(56,189,248,0.16), rgba(0,0,0,1));
+            radial-gradient(circle at 15% 0%, rgba(34,197,94,0.22), rgba(15,23,42,1)),
+            radial-gradient(circle at 85% 100%, rgba(34,197,94,0.08), rgba(0,0,0,1));
         position: relative;
     }}
 
     .film-reel-icon {{
         font-size: 2.2rem;
-        filter: drop-shadow(0 0 12px rgba(250,204,21,0.85));
+        filter: drop-shadow(0 0 14px rgba(34,197,94,0.9));
         margin-bottom: 0.25rem;
     }}
 
@@ -800,10 +804,10 @@ st.markdown(
     [data-testid="stDataFrame"] {{
         border-radius: var(--radius-xl) !important;
         border: 1px solid rgba(148,163,184,0.6);
-        background: radial-gradient(circle at top left, rgba(15,23,42,0.96), rgba(15,23,42,0.88));
+        background: radial-gradient(circle at top left, rgba(15,23,42,0.96), rgba(0,0,0,0.95));
         box-shadow:
             0 0 0 1px rgba(15,23,42,0.9),
-            0 22px 45px rgba(15,23,42,0.95);
+            0 22px 45px rgba(0,0,0,0.95);
         overflow: hidden;
     }}
 
@@ -813,13 +817,13 @@ st.markdown(
     }}
 
     [data-testid="stDataFrame"] thead tr {{
-        background: linear-gradient(90deg, rgba(15,23,42,0.95), rgba(30,64,175,0.85));
+        background: linear-gradient(90deg, rgba(15,23,42,0.95), rgba(15,23,42,0.85));
         text-transform: uppercase;
         letter-spacing: 0.08em;
     }}
 
     [data-testid="stDataFrame"] tbody tr:hover {{
-        background-color: rgba(234,179,8,0.12) !important;
+        background-color: rgba(34,197,94,0.16) !important;
         transition: background-color 0.15s ease-out;
     }}
     </style>
@@ -1360,7 +1364,7 @@ with tab_catalog:
 
         st.caption(f"Página {current_page} de {num_pages}")
 
-        # Construimos la galería como HTML completo para que no se descuadre
+        # Construimos la galería como HTML completo
         cards_html = ['<div class="movie-gallery-grid">']
 
         for _, row in page_df.iterrows():
@@ -1393,6 +1397,7 @@ with tab_catalog:
                 </div>
                 """
             else:
+                # Placeholder carrete vintage
                 poster_html = """
                 <div class="movie-poster-frame">
                   <div class="movie-poster-placeholder">
@@ -1969,7 +1974,6 @@ with tab_analysis:
                         st.markdown("### Películas con Palma de Oro")
                         st.dataframe(
                             palme[["Película", "Año", "Oscars ganados", "Premios totales"]],
-
                             hide_index=True,
                             use_container_width=True
                         )

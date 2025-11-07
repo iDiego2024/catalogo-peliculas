@@ -603,11 +603,15 @@ st.markdown(
     h1 {{
         text-transform: uppercase;
         font-weight: 800;
-        font-size: 1.9rem !important;
+        font-size: 1.6rem !important;
+        line-height: 1.3 !important;
         background: linear-gradient(90deg, var(--accent), var(--accent-alt));
         -webkit-background-clip: text;
         color: transparent;
         margin-bottom: 0.1rem;
+        white-space: normal !important;
+        word-wrap: break-word !important;
+        overflow-wrap: break-word !important;
     }}
 
     h2 {{
@@ -742,10 +746,6 @@ show_posters_fav = st.sidebar.checkbox(
     "Mostrar pósters TMDb en mis favoritas (nota ≥ 9)",
     value=True
 )
-max_netflix_items = st.sidebar.slider(
-    "Máx. películas en tarjetas de detalle",
-    min_value=4, max_value=20, value=8, step=1
-)
 
 st.sidebar.header("⚙️ Opciones avanzadas")
 show_awards = st.sidebar.checkbox(
@@ -876,9 +876,6 @@ filtered_view = apply_search(filtered.copy(), search_query)
 if order_by in filtered_view.columns:
     filtered_view = filtered_view.sort_values(order_by, ascending=order_asc)
 
-# Selector de detalle desde la tabla
-detail_title = None
-
 # ----------------- TABS PRINCIPALES -----------------
 
 tab_catalog, tab_analysis, tab_afi, tab_what = st.tabs(
@@ -941,57 +938,55 @@ with tab_catalog:
         mime="text/csv",
     )
 
-    # Selector de detalle asociado a la tabla
-    if not filtered_view.empty:
-        opciones_detalle = ["(ninguna)"] + [
-            f"{row['Title']} ({fmt_year(row['Year'])})"
-            for _, row in filtered_view.iterrows()
-        ]
-        seleccion = st.selectbox(
-            "Selecciona una película de la tabla para ver su ficha abajo:",
-            opciones_detalle,
-            index=0
-        )
-        if seleccion != "(ninguna)":
-            titulo_sel = seleccion.rsplit(" (", 1)[0]
-            detail_title = titulo_sel
-
     # ============================================================
-    #              DETALLE DE PELÍCULAS (TARJETAS)
+    #        GALERÍA PRINCIPAL: TARJETAS PAGINADAS (CATÁLOGO)
     # ============================================================
 
     st.markdown("---")
-    st.markdown("## 🎞 Detalle de películas: pósters + información completa")
+    st.markdown("## 🎞 Galería de películas (tarjetas paginadas)")
 
     if filtered_view.empty:
         st.info("No hay resultados bajo los filtros y la búsqueda actual.")
     else:
-        netflix_df = filtered_view.copy()
+        total_pelis = len(filtered_view)
 
-        # Si selecciono una película en el selector, muestro solo esa
-        if detail_title:
-            netflix_df = netflix_df[
-                netflix_df["Title"].astype(str) == detail_title
-            ]
-
-        # Si no hay selección manual, priorizo por mi nota
-        if not detail_title and "Your Rating" in netflix_df.columns:
-            netflix_df = netflix_df.sort_values(
-                ["Your Rating", "Year"],
-                ascending=[False, True]
-            )
-
-        netflix_df = netflix_df.head(max_netflix_items)
-
-        st.write(
-            f"Mostrando hasta {len(netflix_df)} películas en tarjetas de detalle "
-            f"con mi nota, IMDb, TMDb, premios y streaming en Chile."
+        page_size = st.slider(
+            "Películas por página en la galería",
+            min_value=6,
+            max_value=36,
+            value=18,
+            step=6,
+            key="gallery_page_size_cards"
         )
 
-        cols = st.columns(3)  # 3 columnas, mejor para pantallas medianas/chicas
+        num_pages = math.ceil(total_pelis / page_size)
 
-        for i, (_, row) in enumerate(netflix_df.iterrows()):
-            col = cols[i % 3]
+        col_page_info_1, col_page_info_2 = st.columns([2, 1])
+        with col_page_info_1:
+            st.caption(
+                f"Mostrando tarjetas de tus películas filtradas: "
+                f"{total_pelis} en total · {page_size} por página."
+            )
+        with col_page_info_2:
+            current_page = st.number_input(
+                "Página",
+                min_value=1,
+                max_value=max(num_pages, 1),
+                value=1,
+                step=1,
+                key="gallery_current_page_cards"
+            )
+
+        start_idx = (current_page - 1) * page_size
+        end_idx = start_idx + page_size
+        page_df = filtered_view.iloc[start_idx:end_idx]
+
+        st.caption(f"Página {current_page} de {num_pages}")
+
+        cols_cards = st.columns(3)
+
+        for i, (_, row) in enumerate(page_df.iterrows()):
+            col = cols_cards[i % 3]
             with col:
                 titulo = row.get("Title", "Sin título")
                 year = row.get("Year", "")
@@ -1004,7 +999,6 @@ with tab_catalog:
                 base_rating = nota if pd.notna(nota) else imdb_rating
                 border_color, glow_color = get_rating_colors(base_rating)
 
-                # TMDb: una sola llamada para póster + rating + id
                 tmdb_info = get_tmdb_basic_info(titulo, year)
                 if tmdb_info:
                     poster_url = tmdb_info.get("poster_url")
@@ -1212,92 +1206,6 @@ with tab_catalog:
                 st.write("No hay películas con nota ≥ 9 bajo estos filtros + búsqueda.")
         else:
             st.write("No se encontró la columna 'Your Rating' en el CSV.")
-
-    # ============================================================
-    #               GALERÍA VISUAL PAGINADA (CARÁTULAS)
-    # ============================================================
-
-    st.markdown("---")
-    st.markdown("## 🧱 Galería visual (pósters por páginas)")
-
-    total_pelis = len(filtered_view)
-
-    if total_pelis == 0:
-        st.info("No hay películas bajo los filtros + búsqueda actuales para la galería.")
-    else:
-        page_size = st.slider(
-            "Películas por página en la galería",
-            min_value=20,
-            max_value=60,
-            value=30,
-            step=10,
-            key="gallery_page_size"
-        )
-
-        num_pages = math.ceil(total_pelis / page_size)
-
-        col_page_info_1, col_page_info_2 = st.columns([2, 1])
-        with col_page_info_1:
-            st.caption(
-                f"Mostrando pósters de tus películas filtradas: "
-                f"{total_pelis} en total · {page_size} por página."
-            )
-        with col_page_info_2:
-            current_page = st.number_input(
-                "Página",
-                min_value=1,
-                max_value=max(num_pages, 1),
-                value=1,
-                step=1,
-                key="gallery_current_page"
-            )
-
-        start_idx = (current_page - 1) * page_size
-        end_idx = start_idx + page_size
-        page_df = filtered_view.iloc[start_idx:end_idx]
-
-        st.caption(f"Página {current_page} de {num_pages}")
-
-        cols_gallery = st.columns(6)
-
-        for i, (_, row) in enumerate(page_df.iterrows()):
-            col = cols_gallery[i % 6]
-            with col:
-                titulo = row.get("Title", "Sin título")
-                year = row.get("Year", "")
-                nota = row.get("Your Rating", "")
-                url = row.get("URL", "")
-
-                tmdb_info = get_tmdb_basic_info(titulo, year)
-                poster_url = tmdb_info.get("poster_url") if tmdb_info else None
-
-                if isinstance(poster_url, str) and poster_url:
-                    try:
-                        st.image(poster_url, use_container_width=True)
-                    except Exception:
-                        st.write("Sin póster")
-                else:
-                    st.write("Sin póster")
-
-                year_str = f" ({fmt_year(year)})" if pd.notna(year) else ""
-                nota_str = f" · ⭐ {fmt_rating(nota)}" if pd.notna(nota) else ""
-
-                st.markdown(
-                    f"**{titulo}**{year_str}{nota_str}",
-                    help="Título desde tu catálogo de IMDb"
-                )
-
-                enlaces = []
-
-                if isinstance(url, str) and url.startswith("http"):
-                    enlaces.append(f"[IMDb]({url})")
-
-                reseñas_url = get_spanish_review_link(titulo, year)
-                if reseñas_url:
-                    enlaces.append(f"[Reseñas ESP]({reseñas_url})")
-
-                if enlaces:
-                    st.markdown(" · ".join(enlaces))
 
 # ============================================================
 #                     TAB 2: ANÁLISIS

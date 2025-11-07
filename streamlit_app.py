@@ -565,7 +565,7 @@ st.markdown(
 
     .main .block-container {{
         max-width: 1200px;
-        padding-top: 1.8rem;
+        padding-top: 3.0rem;
         padding-bottom: 3rem;
     }}
 
@@ -606,7 +606,7 @@ st.markdown(
         background: linear-gradient(90deg, var(--accent), var(--accent-alt));
         -webkit-background-clip: text;
         color: transparent;
-        margin-top: 0.3rem;
+        margin-top: 1.2rem;
         margin-bottom: 0.6rem;
         line-height: 1.25;
         text-align: left;
@@ -828,6 +828,12 @@ show_posters_fav = st.sidebar.checkbox(
     value=True
 )
 
+st.sidebar.header("🌐 TMDb")
+use_tmdb_gallery = st.sidebar.checkbox(
+    "Usar TMDb en la galería visual",
+    value=True
+)
+
 st.sidebar.header("⚙️ Opciones avanzadas")
 show_awards = st.sidebar.checkbox(
     "Consultar premios en OMDb (más lento, usa cuota de API)",
@@ -859,7 +865,7 @@ else:
 all_genres = sorted(
     set(
         g
-        for sub in df.get("GenreList", pd.Series([])).dropna()
+        for sub in df["GenreList"].dropna()
         for g in sub
         if g
     )
@@ -1055,27 +1061,44 @@ with tab_catalog:
 
         num_pages = max(math.ceil(total_pelis / page_size), 1)
 
-        col_page_info_1, col_page_info_2 = st.columns([2, 1])
-        with col_page_info_1:
+        # Estado de la página actual
+        if "gallery_current_page" not in st.session_state:
+            st.session_state.gallery_current_page = 1
+
+        # Ajustar si cambia el número de páginas
+        if st.session_state.gallery_current_page > num_pages:
+            st.session_state.gallery_current_page = num_pages
+        if st.session_state.gallery_current_page < 1:
+            st.session_state.gallery_current_page = 1
+
+        col_nav1, col_nav2, col_nav3 = st.columns([1, 2, 1])
+
+        with col_nav1:
+            prev_disabled = st.session_state.gallery_current_page <= 1
+            if st.button("◀ Anterior", disabled=prev_disabled, key="gallery_prev"):
+                if st.session_state.gallery_current_page > 1:
+                    st.session_state.gallery_current_page -= 1
+
+        with col_nav3:
+            next_disabled = st.session_state.gallery_current_page >= num_pages
+            if st.button("Siguiente ▶", disabled=next_disabled, key="gallery_next"):
+                if st.session_state.gallery_current_page < num_pages:
+                    st.session_state.gallery_current_page += 1
+
+        with col_nav2:
             st.caption(
-                f"Mostrando pósters de tus películas filtradas: "
-                f"{total_pelis} en total · {page_size} por página."
-            )
-        with col_page_info_2:
-            current_page = st.number_input(
-                "Página",
-                min_value=1,
-                max_value=num_pages,
-                value=1,
-                step=1,
-                key="gallery_current_page"
+                f"Página {st.session_state.gallery_current_page} de {num_pages}"
             )
 
+        st.caption(
+            f"Mostrando pósters de tus películas filtradas: "
+            f"{total_pelis} en total · {page_size} por página."
+        )
+
+        current_page = st.session_state.gallery_current_page
         start_idx = (current_page - 1) * page_size
         end_idx = start_idx + page_size
         page_df = filtered_view.iloc[start_idx:end_idx].copy()
-
-        st.caption(f"Página {current_page} de {num_pages}")
 
         cards_html = ['<div class="movie-gallery-grid">']
 
@@ -1091,13 +1114,19 @@ with tab_catalog:
             base_rating = nota if pd.notna(nota) else imdb_rating
             border_color, glow_color = get_rating_colors(base_rating)
 
-            tmdb_info = get_tmdb_basic_info(titulo, year)
-            if tmdb_info:
-                poster_url = tmdb_info.get("poster_url")
-                tmdb_rating = tmdb_info.get("vote_average")
-                tmdb_id = tmdb_info.get("id")
-                availability = get_tmdb_providers(tmdb_id, country="CL")
+            if use_tmdb_gallery:
+                tmdb_info = get_tmdb_basic_info(titulo, year)
+                if tmdb_info:
+                    poster_url = tmdb_info.get("poster_url")
+                    tmdb_rating = tmdb_info.get("vote_average")
+                    tmdb_id = tmdb_info.get("id")
+                    availability = get_tmdb_providers(tmdb_id, country="CL")
+                else:
+                    poster_url = None
+                    tmdb_rating = None
+                    availability = None
             else:
+                tmdb_info = None
                 poster_url = None
                 tmdb_rating = None
                 availability = None
@@ -1261,8 +1290,9 @@ with tab_catalog:
                     etiqueta = f"{titulo}"
                     if pd.notna(nota):
                         etiqueta = f"{int(nota)}/10 — {titulo}"
-                    if pd.notna(year):
-                        etiqueta += f" ({int(year)})"
+                    y_str = fmt_year(year)
+                    if y_str:
+                        etiqueta += f" ({y_str})"
 
                     st.markdown(
                         f"""
@@ -1323,6 +1353,7 @@ with tab_catalog:
 
 with tab_analysis:
     st.markdown("## 📊 Análisis y tendencias (según filtros, sin búsqueda)")
+    st.caption("Los gráficos usan sólo los filtros de la barra lateral (no la búsqueda de texto).")
 
     with st.expander("Ver análisis y tendencias", expanded=False):
         if filtered.empty:
@@ -1689,6 +1720,8 @@ with tab_analysis:
                             if reseñas_url else ""
                         )
 
+                        y_str = fmt_year(year)
+
                         st.markdown(
                             f"""
 <div class="movie-card" style="
@@ -1699,7 +1732,7 @@ with tab_analysis:
     margin-bottom: 12px;
 ">
   <div class="movie-title">
-    {titulo}{f" ({int(year)})" if pd.notna(year) else ""}
+    {titulo}{f" ({y_str})" if y_str else ""}
   </div>
   <div class="movie-sub">
     ⭐ Mi nota: {float(my_rating):.1f}<br>
@@ -1906,17 +1939,6 @@ with tab_afi:
         afi_df = pd.DataFrame(AFI_LIST)
         afi_df["NormTitle"] = afi_df["Title"].apply(normalize_title)
         afi_df["YearInt"] = afi_df["Year"]
-
-        if "YearInt" not in df.columns:
-            if "Year" in df.columns:
-                df["YearInt"] = df["Year"].fillna(-1).astype(int)
-            else:
-                df["YearInt"] = -1
-        if "NormTitle" not in df.columns:
-            if "Title" in df.columns:
-                df["NormTitle"] = df["Title"].apply(normalize_title)
-            else:
-                df["NormTitle"] = ""
 
         def find_match(afi_norm, year, df_full):
             candidates = df_full[df_full["YearInt"] == year]
@@ -2169,6 +2191,7 @@ with tab_what:
                         st.write("Sin póster")
 
                 with col_info:
+                    y_str = fmt_year(year)
                     st.markdown(
                         f"""
 <div class="movie-card" style="
@@ -2179,7 +2202,7 @@ with tab_what:
     margin-bottom: 10px;
 ">
   <div class="movie-title">
-    {titulo}{f" ({int(year)})" if pd.notna(year) else ""}
+    {titulo}{f" ({y_str})" if y_str else ""}
   </div>
   <div class="movie-sub">
     {f"⭐ Mi nota: {fmt_rating(nota)}<br>" if pd.notna(nota) else ""}

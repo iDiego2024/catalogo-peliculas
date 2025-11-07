@@ -7,6 +7,23 @@ import re
 import math
 from urllib.parse import quote_plus
 
+
+# 🎨 Ajuste visual: margen superior del título
+st.markdown("""
+<style>
+    .main > div:first-child {
+        padding-top: 2rem !important;
+    }
+    h1 {
+        margin-top: 1.5rem !important;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+# 🎬 Encabezado principal
+st.markdown("<h1 style='color:#d4af37; text-align:center;'>🎬 MI CATÁLOGO DE PELÍCULAS (IMDB)</h1>", unsafe_allow_html=True)
+
+
 # ----------------- Configuración general -----------------
 
 st.set_page_config(

@@ -11,7 +11,7 @@ from urllib.parse import quote_plus
 
 st.set_page_config(
     page_title="🎬 Mi catálogo de Películas",
-    layout="centered"   # Usamos centered + CSS responsivo
+    layout="centered"
 )
 
 st.title("🎥 Mi catálogo de películas (IMDb)")
@@ -499,27 +499,28 @@ def get_spanish_review_link(title, year=None):
 
 
 def render_poster_placeholder(text="Sin póster"):
-    """Cuadro negro del tamaño aproximado del póster para mantener la grilla."""
-    st.markdown(
-        f"""
-        <div style="
-            width: 100%;
-            aspect-ratio: 2 / 3;
-            background: #020617;
-            border-radius: 10px;
-            border: 1px solid rgba(148,163,184,0.6);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 0.7rem;
-            color: #9ca3af;
-            margin-bottom: 6px;
-        ">
-            {text}
+    """Devuelve HTML de un placeholder tipo carrete vintage."""
+    return f"""
+    <div class="movie-poster-frame">
+      <div class="movie-poster-placeholder">
+        <div class="film-reel-icon">🎞️</div>
+        <div class="film-reel-text">{text}</div>
+      </div>
+    </div>
+    """
+
+
+def get_poster_html(poster_url, alt_text="Póster"):
+    """Devuelve HTML de la imagen dentro de un frame; si no hay, usa placeholder."""
+    if isinstance(poster_url, str) and poster_url:
+        return f"""
+        <div class="movie-poster-frame">
+          <img src="{poster_url}" alt="{alt_text}" class="movie-poster-img">
         </div>
-        """,
-        unsafe_allow_html=True,
-    )
+        """
+    else:
+        return render_poster_placeholder("Sin póster")
+
 
 # ----------------- Carga de datos -----------------
 
@@ -586,10 +587,9 @@ st.markdown(
         font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
     }}
 
-    /* Contenedor principal responsivo */
     .main .block-container {{
         max-width: 1200px;
-        padding-top: 4.5rem;   /* más espacio para que no se corte el título */
+        padding-top: 4.5rem;  /* margen para que no se corte el título */
         padding-bottom: 3rem;
     }}
 
@@ -714,6 +714,10 @@ st.markdown(
         transition: all 0.16s ease-out;
     }}
 
+    .movie-card-grid {{
+        padding: 10px 10px 12px 10px;
+    }}
+
     .movie-title {{
         font-weight: 600;
         letter-spacing: 0.04em;
@@ -729,9 +733,56 @@ st.markdown(
         color: #cbd5f5;
     }}
 
-    /* ==========================
-       Tabla principal del catálogo
-       ========================== */
+    .movie-grid {{
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+        gap: 1.1rem;
+        margin-top: 0.75rem;
+    }}
+
+    .movie-poster-frame {{
+        width: 100%;
+        aspect-ratio: 2 / 3;
+        border-radius: 12px;
+        overflow: hidden;
+        border: 1px solid rgba(148,163,184,0.55);
+        background: radial-gradient(circle at top, #020617 0%, #020617 40%, #000000 100%);
+        margin-bottom: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }}
+
+    .movie-poster-img {{
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
+    }}
+
+    .movie-poster-placeholder {{
+        width: 100%;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 4px;
+        color: #e5e7eb;
+        font-size: 0.75rem;
+        background: radial-gradient(circle at center, #111827 0%, #020617 60%, #000000 100%);
+    }}
+
+    .film-reel-icon {{
+        font-size: 1.8rem;
+        filter: drop-shadow(0 0 6px rgba(0,0,0,0.6));
+    }}
+
+    .film-reel-text {{
+        opacity: 0.85;
+    }}
+
+    /* Tabla principal */
 
     [data-testid="stDataFrame"] {{
         border-radius: var(--radius-xl) !important;
@@ -1043,145 +1094,142 @@ with tab_catalog:
 
         st.caption(f"Página {current_page} de {num_pages}")
 
-        cols_cards = st.columns(3)
+        # Construimos toda la grilla en HTML para que el grid sea perfecto
+        cards_html = '<div class="movie-grid">'
 
-        for i, (_, row) in enumerate(page_df.iterrows()):
-            col = cols_cards[i % 3]
-            with col:
-                titulo = row.get("Title", "Sin título")
-                year = row.get("Year", "")
-                nota = row.get("Your Rating", "")
-                imdb_rating = row.get("IMDb Rating", "")
-                genres = row.get("Genres", "")
-                directors = row.get("Directors", "")
-                url = row.get("URL", "")
+        for _, row in page_df.iterrows():
+            titulo = row.get("Title", "Sin título")
+            year = row.get("Year", "")
+            nota = row.get("Your Rating", "")
+            imdb_rating = row.get("IMDb Rating", "")
+            genres = row.get("Genres", "")
+            directors = row.get("Directors", "")
+            url = row.get("URL", "")
 
-                base_rating = nota if pd.notna(nota) else imdb_rating
-                border_color, glow_color = get_rating_colors(base_rating)
+            base_rating = nota if pd.notna(nota) else imdb_rating
+            border_color, glow_color = get_rating_colors(base_rating)
 
-                tmdb_info = get_tmdb_basic_info(titulo, year)
-                if tmdb_info:
-                    poster_url = tmdb_info.get("poster_url")
-                    tmdb_rating = tmdb_info.get("vote_average")
-                    tmdb_id = tmdb_info.get("id")
-                    availability = get_tmdb_providers(tmdb_id, country="CL")
+            tmdb_info = get_tmdb_basic_info(titulo, year)
+            if tmdb_info:
+                poster_url = tmdb_info.get("poster_url")
+                tmdb_rating = tmdb_info.get("vote_average")
+                tmdb_id = tmdb_info.get("id")
+                availability = get_tmdb_providers(tmdb_id, country="CL")
+            else:
+                poster_url = None
+                tmdb_rating = None
+                availability = None
+
+            poster_html = get_poster_html(poster_url, alt_text=titulo)
+
+            year_str = f" ({int(year)})" if pd.notna(year) else ""
+            nota_str = f"⭐ Mi nota: {fmt_rating(nota)}" if pd.notna(nota) else ""
+            imdb_str = f"IMDb: {fmt_rating(imdb_rating)}" if pd.notna(imdb_rating) else ""
+
+            tmdb_str = (
+                f"TMDb: {fmt_rating(tmdb_rating)}"
+                if tmdb_rating is not None else "TMDb: N/A"
+            )
+
+            # Premios (OMDb) controlados por checkbox
+            if show_awards:
+                awards = get_omdb_awards(titulo, year)
+            else:
+                awards = None
+
+            if not show_awards:
+                awards_text = "Premios no consultados (OMDb desactivado)."
+            elif awards is None:
+                awards_text = "Sin datos de premios (OMDb)."
+            elif isinstance(awards, dict) and "error" in awards:
+                awards_text = f"Error OMDb: {awards['error']}"
+            else:
+                base_parts = []
+                if awards.get("oscars", 0):
+                    base_parts.append(f"🏆 {awards['oscars']} Oscar(s)")
+                if awards.get("emmys", 0):
+                    base_parts.append(f"📺 {awards['emmys']} Emmy(s)")
+                if awards.get("baftas", 0):
+                    base_parts.append(f"🎭 {awards['baftas']} BAFTA(s)")
+                if awards.get("golden_globes", 0):
+                    base_parts.append(f"🌐 {awards['golden_globes']} Globo(s) de Oro")
+                if awards.get("palme_dor", False):
+                    base_parts.append("🌴 Palma de Oro")
+
+                extra_parts = []
+                if awards.get("oscars_nominated", 0):
+                    extra_parts.append(f"🎬 Nominada a {awards['oscars_nominated']} Oscar(s)")
+                if awards.get("total_wins", 0):
+                    extra_parts.append(f"{awards['total_wins']} premios totales")
+                if awards.get("total_nominations", 0):
+                    extra_parts.append(f"{awards['total_nominations']} nominaciones totales")
+
+                parts = base_parts + extra_parts
+                if not parts:
+                    awards_text = "Sin grandes premios detectados."
                 else:
-                    poster_url = None
-                    tmdb_rating = None
-                    availability = None
+                    awards_text = " · ".join(parts)
 
-                if isinstance(poster_url, str) and poster_url:
-                    try:
-                        st.image(poster_url)
-                    except Exception:
-                        render_poster_placeholder()
-                else:
-                    render_poster_placeholder()
+                if awards.get("raw"):
+                    awards_text += (
+                        f"<br><span style='font-size:0.75rem;color:#9ca3af;'>"
+                        f"OMDb: {awards['raw']}</span>"
+                    )
 
-                year_str = f" ({int(year)})" if pd.notna(year) else ""
-                nota_str = f"⭐ Mi nota: {fmt_rating(nota)}" if pd.notna(nota) else ""
-                imdb_str = f"IMDb: {fmt_rating(imdb_rating)}" if pd.notna(imdb_rating) else ""
+            if availability is None:
+                platforms = []
+                link = None
+            else:
+                platforms = availability.get("platforms") or []
+                link = availability.get("link")
 
-                tmdb_str = (
-                    f"TMDb: {fmt_rating(tmdb_rating)}"
-                    if tmdb_rating is not None else "TMDb: N/A"
-                )
+            platforms_str = ", ".join(platforms) if platforms else "Sin datos para Chile (CL)"
+            link_html = (
+                f'<a href="{link}" target="_blank">Ver streaming en TMDb (CL)</a>'
+                if link else "Sin enlace de streaming disponible"
+            )
 
-                # Premios (OMDb) controlados por checkbox
-                if show_awards:
-                    awards = get_omdb_awards(titulo, year)
-                else:
-                    awards = None
+            imdb_link_html = (
+                f'<a href="{url}" target="_blank">Ver en IMDb</a>'
+                if isinstance(url, str) and url.startswith("http")
+                else ""
+            )
 
-                if not show_awards:
-                    awards_text = "Premios no consultados (OMDb desactivado)."
-                elif awards is None:
-                    awards_text = "Sin datos de premios (OMDb)."
-                elif isinstance(awards, dict) and "error" in awards:
-                    awards_text = f"Error OMDb: {awards['error']}"
-                else:
-                    base_parts = []
-                    if awards.get("oscars", 0):
-                        base_parts.append(f"🏆 {awards['oscars']} Oscar(s)")
-                    if awards.get("emmys", 0):
-                        base_parts.append(f"📺 {awards['emmys']} Emmy(s)")
-                    if awards.get("baftas", 0):
-                        base_parts.append(f"🎭 {awards['baftas']} BAFTA(s)")
-                    if awards.get("golden_globes", 0):
-                        base_parts.append(f"🌐 {awards['golden_globes']} Globo(s) de Oro")
-                    if awards.get("palme_dor", False):
-                        base_parts.append("🌴 Palma de Oro")
+            reseñas_url = get_spanish_review_link(titulo, year)
+            reseñas_html = (
+                f'<a href="{reseñas_url}" target="_blank">Reseñas en español</a>'
+                if reseñas_url else ""
+            )
 
-                    extra_parts = []
-                    if awards.get("oscars_nominated", 0):
-                        extra_parts.append(f"🎬 Nominada a {awards['oscars_nominated']} Oscar(s)")
-                    if awards.get("total_wins", 0):
-                        extra_parts.append(f"{awards['total_wins']} premios totales")
-                    if awards.get("total_nominations", 0):
-                        extra_parts.append(f"{awards['total_nominations']} nominaciones totales")
+            card_html = f"""
+            <div class="movie-card movie-card-grid" style="
+                border-color: {border_color};
+                box-shadow:
+                    0 0 0 1px rgba(15,23,42,0.9),
+                    0 0 20px {glow_color};
+            ">
+              {poster_html}
+              <div class="movie-title">{titulo}{year_str}</div>
+              <div class="movie-sub">
+                {nota_str}<br>
+                {imdb_str}<br>
+                {tmdb_str}<br>
+                {f"<b>Géneros:</b> {genres}<br>" if isinstance(genres, str) and genres else ""}
+                {f"<b>Director(es):</b> {directors}<br>" if isinstance(directors, str) and directors else ""}
+                <b>Premios:</b> {awards_text}<br>
+                <b>Streaming (CL):</b> {platforms_str}<br>
+                {link_html}<br>
+                {imdb_link_html}<br>
+                <b>Reseñas:</b> {reseñas_html}
+              </div>
+            </div>
+            """
 
-                    parts = base_parts + extra_parts
-                    if not parts:
-                        awards_text = "Sin grandes premios detectados."
-                    else:
-                        awards_text = " · ".join(parts)
+            cards_html += card_html
 
-                    if awards.get("raw"):
-                        awards_text += (
-                            f"<br><span style='font-size:0.75rem;color:#9ca3af;'>"
-                            f"OMDb: {awards['raw']}</span>"
-                        )
+        cards_html += "</div>"
 
-                if availability is None:
-                    platforms = []
-                    link = None
-                else:
-                    platforms = availability.get("platforms") or []
-                    link = availability.get("link")
-
-                platforms_str = ", ".join(platforms) if platforms else "Sin datos para Chile (CL)"
-                link_html = (
-                    f'<a href="{link}" target="_blank">Ver streaming en TMDb (CL)</a>'
-                    if link else "Sin enlace de streaming disponible"
-                )
-
-                imdb_link_html = (
-                    f'<a href="{url}" target="_blank">Ver en IMDb</a>'
-                    if isinstance(url, str) and url.startswith("http")
-                    else ""
-                )
-
-                reseñas_url = get_spanish_review_link(titulo, year)
-                reseñas_html = (
-                    f'<a href="{reseñas_url}" target="_blank">Reseñas en español</a>'
-                    if reseñas_url else ""
-                )
-
-                info_html = f"""
-                <div class="movie-card" style="
-                    border-color: {border_color};
-                    box-shadow:
-                        0 0 0 1px rgba(15,23,42,0.9),
-                        0 0 20px {glow_color};
-                    padding: 10px 10px 8px 10px;
-                    margin-top: 8px;
-                ">
-                  <div class="movie-title">{titulo}{year_str}</div>
-                  <div class="movie-sub">
-                    {nota_str}<br>
-                    {imdb_str}<br>
-                    {tmdb_str}<br>
-                    {f"<b>Géneros:</b> {genres}<br>" if isinstance(genres, str) and genres else ""}
-                    {f"<b>Director(es):</b> {directors}<br>" if isinstance(directors, str) and directors else ""}
-                    <b>Premios:</b> {awards_text}<br>
-                    <b>Streaming (CL):</b> {platforms_str}<br>
-                    {link_html}<br>
-                    {imdb_link_html}<br>
-                    <b>Reseñas:</b> {reseñas_html}
-                  </div>
-                </div>
-                """
-                st.markdown(info_html, unsafe_allow_html=True)
+        st.markdown(cards_html, unsafe_allow_html=True)
 
     # ============================================================
     #                        MIS FAVORITAS
@@ -1235,15 +1283,13 @@ with tab_catalog:
                         if show_posters_fav:
                             tmdb_info = get_tmdb_basic_info(titulo, year)
                             poster_url = tmdb_info.get("poster_url") if tmdb_info else None
-                            if isinstance(poster_url, str) and poster_url:
-                                try:
-                                    st.image(poster_url)
-                                except Exception:
-                                    render_poster_placeholder()
-                            else:
-                                render_poster_placeholder()
+                            html_poster = get_poster_html(poster_url, alt_text=titulo)
+                            st.markdown(html_poster, unsafe_allow_html=True)
                         else:
-                            render_poster_placeholder("Póster desactivado")
+                            st.markdown(
+                                render_poster_placeholder("Póster desactivado"),
+                                unsafe_allow_html=True,
+                            )
 
                     with col_info:
                         if isinstance(genres, str) and genres:
@@ -2091,13 +2137,8 @@ with tab_what:
                 col_img, col_info = st.columns([1, 3])
 
                 with col_img:
-                    if isinstance(poster_url, str) and poster_url:
-                        try:
-                            st.image(poster_url)
-                        except Exception:
-                            render_poster_placeholder()
-                    else:
-                        render_poster_placeholder()
+                    html_poster = get_poster_html(poster_url, alt_text=titulo)
+                    st.markdown(html_poster, unsafe_allow_html=True)
 
                 with col_info:
                     st.markdown(

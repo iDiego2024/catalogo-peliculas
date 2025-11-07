@@ -10,7 +10,7 @@ from urllib.parse import quote_plus
 
 st.set_page_config(
     page_title="🎬 Mi catálogo de Películas",
-    layout="centered"   # antes era "wide"
+    layout="centered"   # Usamos centered + CSS responsivo
 )
 
 st.title("🎥 Mi catálogo de películas (IMDb)")
@@ -562,6 +562,27 @@ st.markdown(
         font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
     }}
 
+    /* Contenedor principal responsivo */
+    .main .block-container {{
+        max-width: 1200px;
+        padding-top: 1.5rem;
+        padding-bottom: 3rem;
+    }}
+
+    @media (min-width: 1500px) {{
+        .main .block-container {{
+            max-width: 1400px;
+        }}
+    }}
+
+    @media (max-width: 900px) {{
+        .main .block-container {{
+            max-width: 100%;
+            padding-left: 0.75rem;
+            padding-right: 0.75rem;
+        }}
+    }}
+
     [data-testid="stSidebar"] > div:first-child {{
         background: linear-gradient(180deg, rgba(15,23,42,0.98), rgba(15,23,42,0.90));
         border-right: 1px solid rgba(148,163,184,0.25);
@@ -972,7 +993,7 @@ with tab_catalog:
             f"con mi nota, IMDb, TMDb, premios y streaming en Chile."
         )
 
-        cols = st.columns(3)  # antes 4, mejor para pantallas medianas/chicas
+        cols = st.columns(3)  # 3 columnas, mejor para pantallas medianas/chicas
 
         for i, (_, row) in enumerate(netflix_df.iterrows()):
             col = cols[i % 3]
@@ -1649,7 +1670,6 @@ with tab_analysis:
                     else:
                         st.write("Ninguna de las películas filtradas aparece con Palma de Oro en OMDb.")
 
-                    # Cruce de premios con tus gustos
                     merged = awards_stats_df.merge(
                         df[["Title", "Year", "Your Rating", "IMDb Rating"]],
                         on=["Title", "Year"],
@@ -1658,7 +1678,6 @@ with tab_analysis:
 
                     st.markdown("### 🎯 Cómo me llevo con los premios")
 
-                    # Palma de Oro que amas
                     loved_palme = merged[
                         (merged["palme_dor"]) &
                         (merged["Your Rating"].notna()) &
@@ -1684,7 +1703,6 @@ with tab_analysis:
                             use_container_width=True
                         )
 
-                    # Palma de Oro que no te convencieron
                     disliked_palme = merged[
                         (merged["palme_dor"]) &
                         (merged["Your Rating"].notna()) &
@@ -1710,7 +1728,6 @@ with tab_analysis:
                             use_container_width=True
                         )
 
-                    # Grandes ganadoras de Oscar que amas
                     loved_oscars = merged[
                         (merged["oscars"] >= 3) &
                         (merged["Your Rating"].notna()) &
@@ -1736,7 +1753,6 @@ with tab_analysis:
                             use_container_width=True
                         )
 
-                    # Grandes ganadoras de Oscar donde fuiste duro
                     harsh_oscars = merged[
                         (merged["oscars"] >= 3) &
                         (merged["Your Rating"].notna()) &
@@ -1954,7 +1970,6 @@ with tab_what:
                 base_rating = nota if pd.notna(nota) else imdb_rating
                 border_color, glow_color = get_rating_colors(base_rating)
 
-                # TMDb: una sola llamada para rating + póster + id
                 tmdb_info = get_tmdb_basic_info(titulo, year)
                 if tmdb_info:
                     tmdb_rating = tmdb_info.get("vote_average")
@@ -1971,7 +1986,6 @@ with tab_what:
                     if tmdb_rating is not None else "TMDb: N/A"
                 )
 
-                # Premios (OMDb) controlados por checkbox
                 if show_awards:
                     awards = get_omdb_awards(titulo, year)
                 else:

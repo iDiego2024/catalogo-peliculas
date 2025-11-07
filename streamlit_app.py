@@ -16,11 +16,13 @@ st.set_page_config(
 
 st.title("🎥 Mi catálogo de películas (IMDb)")
 
-# ----------------- Config TMDb -----------------
+# ----------------- Config TMDb / OMDb -----------------
 
 TMDB_API_KEY = st.secrets.get("TMDB_API_KEY", None)
 TMDB_SEARCH_URL = "https://api.themoviedb.org/3/search/movie"
 TMDB_IMAGE_BASE = "https://image.tmdb.org/t/p/w342"
+
+OMDB_API_KEY = st.secrets.get("OMDB_API_KEY", None)
 
 # ----------------- Lista AFI 100 Years...100 Movies (10th Anniversary Edition) -----------------
 
@@ -285,7 +287,7 @@ def get_omdb_awards(title, year=None):
     """
     Info de premios desde OMDb.
     """
-    api_key = st.secrets.get("OMDB_API_KEY", None)
+    api_key = OMDB_API_KEY
     if api_key is None:
         return {"error": "OMDB_API_KEY no está configurada en st.secrets."}
     if not title or pd.isna(title):
@@ -523,12 +525,19 @@ if "Title" not in df.columns:
     st.error("El CSV debe contener una columna 'Title' para poder funcionar.")
     st.stop()
 
-df["NormTitle"] = df["Title"].apply(normalize_title)
+df["NormTitle"] = df["Title"].fillna("").apply(normalize_title)
 
 if "Year" in df.columns:
     df["YearInt"] = df["Year"].fillna(-1).astype(int)
 else:
     df["YearInt"] = -1
+
+# Avisos de API keys en la barra lateral
+if TMDB_API_KEY is None:
+    st.sidebar.warning("⚠️ No se encontró TMDB_API_KEY en st.secrets. No se podrán mostrar pósters ni proveedores de streaming desde TMDb.")
+
+if OMDB_API_KEY is None:
+    st.sidebar.info("ℹ️ OMDB_API_KEY no está configurada en st.secrets. La sección de premios de OMDb mostrará mensajes de error.")
 
 # ----------------- Tema oscuro + CSS -----------------
 
@@ -566,7 +575,7 @@ st.markdown(
     /* Contenedor principal responsivo */
     .main .block-container {{
         max-width: 1200px;
-        padding-top: 1.5rem;
+        padding-top: 3.5rem;   /* más espacio para que no se corte el título */
         padding-bottom: 3rem;
     }}
 
@@ -581,6 +590,7 @@ st.markdown(
             max-width: 100%;
             padding-left: 0.75rem;
             padding-right: 0.75rem;
+            padding-top: 4.5rem;  /* aún más espacio en pantallas pequeñas */
         }}
     }}
 
@@ -1893,7 +1903,7 @@ with tab_afi:
     with st.expander("Ver mi progreso en la lista AFI 100", expanded=True):
 
         afi_df = pd.DataFrame(AFI_LIST)
-        afi_df["NormTitle"] = afi_df["Title"].apply(normalize_title)
+        afi_df["NormTitle"] = afi_df["Title"].fillna("").apply(normalize_title)
         afi_df["YearInt"] = afi_df["Year"]
 
         if "YearInt" not in df.columns:
@@ -1903,7 +1913,7 @@ with tab_afi:
                 df["YearInt"] = -1
         if "NormTitle" not in df.columns:
             if "Title" in df.columns:
-                df["NormTitle"] = df["Title"].apply(normalize_title)
+                df["NormTitle"] = df["Title"].fillna("").apply(normalize_title)
             else:
                 df["NormTitle"] = ""
 

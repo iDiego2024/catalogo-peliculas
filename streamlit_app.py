@@ -10,14 +10,10 @@ from urllib.parse import quote_plus
 
 st.set_page_config(
     page_title="🎬 Mi catálogo de Películas",
-    layout="wide"
+    layout="centered"   # antes era "wide"
 )
 
 st.title("🎥 Mi catálogo de películas (IMDb)")
-# st.write(
-#   "App basada en mi export de IMDb. "
-#  "Una sola búsqueda central, filtros en la barra lateral y vista tipo Netflix con premios y streaming."
-# )
 
 # ----------------- Config TMDb -----------------
 
@@ -682,6 +678,36 @@ st.markdown(
         line-height: 1.35;
         color: #cbd5f5;
     }}
+
+    /* ==========================
+       Tabla principal del catálogo
+       ========================== */
+
+    [data-testid="stDataFrame"] {{
+        border-radius: var(--radius-xl) !important;
+        border: 1px solid rgba(148,163,184,0.6);
+        background: radial-gradient(circle at top left, rgba(15,23,42,0.96), rgba(15,23,42,0.88));
+        box-shadow:
+            0 0 0 1px rgba(15,23,42,0.9),
+            0 22px 45px rgba(15,23,42,0.95);
+        overflow: hidden;
+    }}
+
+    [data-testid="stDataFrame"] * {{
+        color: #e5e7eb !important;
+        font-size: 0.82rem;
+    }}
+
+    [data-testid="stDataFrame"] thead tr {{
+        background: linear-gradient(90deg, rgba(15,23,42,0.95), rgba(30,64,175,0.85));
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+    }}
+
+    [data-testid="stDataFrame"] tbody tr:hover {{
+        background-color: rgba(234,179,8,0.12) !important;
+        transition: background-color 0.15s ease-out;
+    }}
     </style>
     """,
     unsafe_allow_html=True,
@@ -946,10 +972,10 @@ with tab_catalog:
             f"con mi nota, IMDb, TMDb, premios y streaming en Chile."
         )
 
-        cols = st.columns(4)
+        cols = st.columns(3)  # antes 4, mejor para pantallas medianas/chicas
 
         for i, (_, row) in enumerate(netflix_df.iterrows()):
-            col = cols[i % 4]
+            col = cols[i % 3]
             with col:
                 titulo = row.get("Title", "Sin título")
                 year = row.get("Year", "")

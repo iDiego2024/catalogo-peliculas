@@ -475,7 +475,6 @@ def get_rating_colors(rating):
         return ("rgba(148,163,184,0.8)", "rgba(15,23,42,0.0)")
 
     if r >= 9:
-        # Verde esmeralda
         return ("#22c55e", "rgba(34,197,94,0.55)")
     elif r >= 8:
         return ("#0ea5e9", "rgba(14,165,233,0.55)")
@@ -531,15 +530,15 @@ if "Year" in df.columns:
 else:
     df["YearInt"] = -1
 
-# ----------------- Tema oscuro + CSS (negro mate + glow esmeralda) -----------------
+# ----------------- Tema oscuro + CSS -----------------
 
 primary_bg = "#020617"
 secondary_bg = "#020617"
 text_color = "#e5e7eb"
-card_bg = "rgba(10,10,10,0.95)"
-accent_color = "#22c55e"        # Verde esmeralda
-accent_soft = "rgba(34,197,94,0.25)"
-accent_alt = "#4ade80"          # Verde clarito
+card_bg = "rgba(15,23,42,0.9)"
+accent_color = "#eab308"
+accent_soft = "rgba(234,179,8,0.25)"
+accent_alt = "#38bdf8"
 
 st.markdown(
     f"""
@@ -559,12 +558,11 @@ st.markdown(
     }}
 
     html, body, .stApp {{
-        background: radial-gradient(circle at top, #020617 0%, #020617 40%, #000000 100%);
+        background: radial-gradient(circle at top left, #0f172a 0%, #020617 40%, #000000 100%);
         color: var(--text-color);
         font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
     }}
 
-    /* Contenedor principal responsivo */
     .main .block-container {{
         max-width: 1200px;
         padding-top: 1.8rem;
@@ -586,7 +584,7 @@ st.markdown(
     }}
 
     [data-testid="stSidebar"] > div:first-child {{
-        background: radial-gradient(circle at top left, rgba(15,23,42,0.98), rgba(0,0,0,0.98));
+        background: linear-gradient(180deg, rgba(15,23,42,0.98), rgba(15,23,42,0.90));
         border-right: 1px solid rgba(148,163,184,0.25);
         box-shadow: 0 0 30px rgba(0,0,0,0.7);
     }}
@@ -612,9 +610,6 @@ st.markdown(
         margin-bottom: 0.6rem;
         line-height: 1.25;
         text-align: left;
-        white-space: normal;
-        word-break: break-word;
-        overflow-wrap: anywhere;
     }}
 
     h2 {{
@@ -637,11 +632,11 @@ st.markdown(
     }}
 
     [data-testid="stMetric"] {{
-        background: radial-gradient(circle at top left, rgba(15,23,42,0.98), rgba(0,0,0,0.95));
+        background: radial-gradient(circle at top left, rgba(15,23,42,0.95), rgba(15,23,42,0.75));
         padding: 14px 16px;
         border-radius: 14px;
         border: 1px solid rgba(148,163,184,0.45);
-        box-shadow: 0 12px 30px rgba(0,0,0,0.8);
+        box-shadow: 0 12px 30px rgba(15,23,42,0.7);
         backdrop-filter: blur(10px);
     }}
 
@@ -661,39 +656,39 @@ st.markdown(
     [data-testid="stExpander"] {{
         border-radius: var(--radius-xl) !important;
         border: 1px solid rgba(148,163,184,0.5);
-        background: radial-gradient(circle at top left, rgba(15,23,42,0.98), rgba(0,0,0,0.92));
+        background: radial-gradient(circle at top left, rgba(15,23,42,0.98), rgba(15,23,42,0.85));
         margin-bottom: 1rem;
-        box-shadow: 0 12px 30px rgba(0,0,0,0.9);
+        box-shadow: 0 12px 30px rgba(15,23,42,0.7);
     }}
 
     button[kind="secondary"], button[kind="primary"], .stButton > button {{
         border-radius: 999px !important;
-        border: 1px solid rgba(34,197,94,0.8) !important;
-        background: radial-gradient(circle at top left, rgba(34,197,94,0.18), rgba(0,0,0,1)) !important;
-        color: #ecfdf5 !important;
+        border: 1px solid rgba(250, 204, 21, 0.7) !important;
+        background: radial-gradient(circle at top left, rgba(234,179,8,0.25), rgba(15,23,42,1)) !important;
+        color: #fefce8 !important;
         font-weight: 600 !important;
         letter-spacing: 0.08em;
         text-transform: uppercase;
         font-size: 0.75rem !important;
         padding: 0.45rem 1.2rem !important;
-        box-shadow: 0 10px 25px rgba(34,197,94,0.45);
+        box-shadow: 0 10px 25px rgba(234,179,8,0.35);
         transition: all 0.18s ease-out;
     }}
 
     button[kind="secondary"]:hover, button[kind="primary"]:hover, .stButton > button:hover {{
         transform: translateY(-1px);
         box-shadow:
-            0 0 0 1px rgba(34,197,94,0.7),
-            0 0 26px rgba(34,197,94,0.85);
+            0 0 0 1px rgba(250,204,21,0.7),
+            0 0 26px rgba(250,204,21,0.75);
     }}
 
     .movie-card {{
-        background: radial-gradient(circle at top left, rgba(15,23,42,0.96), rgba(0,0,0,0.98));
+        background: radial-gradient(circle at top left, rgba(15,23,42,0.9), rgba(15,23,42,0.85));
         border-radius: var(--radius-lg);
         padding: 14px 14px 12px 14px;
         margin-bottom: 14px;
         border: 1px solid rgba(148,163,184,0.45);
-        box-shadow: 0 18px 40px rgba(0,0,0,0.9);
+        box-shadow: 0 18px 40px rgba(15,23,42,0.8);
         backdrop-filter: blur(12px);
         position: relative;
         overflow: hidden;
@@ -710,9 +705,9 @@ st.markdown(
     .movie-card-grid:hover {{
         transform: translateY(-4px) scale(1.01);
         box-shadow:
-            0 0 0 1px rgba(34,197,94,0.8),
-            0 0 32px rgba(34,197,94,0.95);
-        border-color: #22c55e !important;
+            0 0 0 1px rgba(250,204,21,0.7),
+            0 0 32px rgba(250,204,21,0.85);
+        border-color: #facc15 !important;
     }}
 
     .movie-title {{
@@ -729,8 +724,6 @@ st.markdown(
         line-height: 1.35;
         color: #cbd5f5;
     }}
-
-    /* GRID de la galería */
 
     .movie-gallery-grid {{
         display: grid;
@@ -778,14 +771,14 @@ st.markdown(
         align-items: center;
         justify-content: center;
         background:
-            radial-gradient(circle at 15% 0%, rgba(34,197,94,0.22), rgba(15,23,42,1)),
-            radial-gradient(circle at 85% 100%, rgba(34,197,94,0.08), rgba(0,0,0,1));
+            radial-gradient(circle at 15% 0%, rgba(250,204,21,0.12), rgba(15,23,42,1)),
+            radial-gradient(circle at 85% 100%, rgba(56,189,248,0.16), rgba(0,0,0,1));
         position: relative;
     }}
 
     .film-reel-icon {{
         font-size: 2.2rem;
-        filter: drop-shadow(0 0 14px rgba(34,197,94,0.9));
+        filter: drop-shadow(0 0 12px rgba(250,204,21,0.85));
         margin-bottom: 0.25rem;
     }}
 
@@ -797,17 +790,13 @@ st.markdown(
         opacity: 0.95;
     }}
 
-    /* ==========================
-       Tabla principal del catálogo
-       ========================== */
-
     [data-testid="stDataFrame"] {{
         border-radius: var(--radius-xl) !important;
         border: 1px solid rgba(148,163,184,0.6);
-        background: radial-gradient(circle at top left, rgba(15,23,42,0.96), rgba(0,0,0,0.95));
+        background: radial-gradient(circle at top left, rgba(15,23,42,0.96), rgba(15,23,42,0.88));
         box-shadow:
             0 0 0 1px rgba(15,23,42,0.9),
-            0 22px 45px rgba(0,0,0,0.95);
+            0 22px 45px rgba(15,23,42,0.95);
         overflow: hidden;
     }}
 
@@ -817,13 +806,13 @@ st.markdown(
     }}
 
     [data-testid="stDataFrame"] thead tr {{
-        background: linear-gradient(90deg, rgba(15,23,42,0.95), rgba(15,23,42,0.85));
+        background: linear-gradient(90deg, rgba(15,23,42,0.95), rgba(30,64,175,0.85));
         text-transform: uppercase;
         letter-spacing: 0.08em;
     }}
 
     [data-testid="stDataFrame"] tbody tr:hover {{
-        background-color: rgba(34,197,94,0.16) !important;
+        background-color: rgba(234,179,8,0.12) !important;
         transition: background-color 0.15s ease-out;
     }}
     </style>
@@ -1094,7 +1083,7 @@ with tab_catalog:
             f"con mi nota, IMDb, TMDb, premios y streaming en Chile."
         )
 
-        cols = st.columns(3)  # 3 columnas, mejor para pantallas medianas/chicas
+        cols = st.columns(3)
 
         for i, (_, row) in enumerate(netflix_df.iterrows()):
             col = cols[i % 3]
@@ -1110,7 +1099,6 @@ with tab_catalog:
                 base_rating = nota if pd.notna(nota) else imdb_rating
                 border_color, glow_color = get_rating_colors(base_rating)
 
-                # TMDb: una sola llamada para póster + rating + id
                 tmdb_info = get_tmdb_basic_info(titulo, year)
                 if tmdb_info:
                     poster_url = tmdb_info.get("poster_url")
@@ -1139,7 +1127,6 @@ with tab_catalog:
                     if tmdb_rating is not None else "TMDb: N/A"
                 )
 
-                # Premios (OMDb) controlados por checkbox
                 if show_awards:
                     awards = get_omdb_awards(titulo, year)
                 else:
@@ -1210,29 +1197,29 @@ with tab_catalog:
                 )
 
                 info_html = f"""
-                <div class="movie-card" style="
-                    border-color: {border_color};
-                    box-shadow:
-                        0 0 0 1px rgba(15,23,42,0.9),
-                        0 0 20px {glow_color};
-                    padding: 10px 10px 8px 10px;
-                    margin-top: 8px;
-                ">
-                  <div class="movie-title">{titulo}{year_str}</div>
-                  <div class="movie-sub">
-                    {nota_str}<br>
-                    {imdb_str}<br>
-                    {tmdb_str}<br>
-                    {f"<b>Géneros:</b> {genres}<br>" if isinstance(genres, str) and genres else ""}
-                    {f"<b>Director(es):</b> {directors}<br>" if isinstance(directors, str) and directors else ""}
-                    <b>Premios:</b> {awards_text}<br>
-                    <b>Streaming (CL):</b> {platforms_str}<br>
-                    {link_html}<br>
-                    {imdb_link_html}<br>
-                    <b>Reseñas:</b> {reseñas_html}
-                  </div>
-                </div>
-                """
+<div class="movie-card" style="
+    border-color: {border_color};
+    box-shadow:
+        0 0 0 1px rgba(15,23,42,0.9),
+        0 0 20px {glow_color};
+    padding: 10px 10px 8px 10px;
+    margin-top: 8px;
+">
+  <div class="movie-title">{titulo}{year_str}</div>
+  <div class="movie-sub">
+    {nota_str}<br>
+    {imdb_str}<br>
+    {tmdb_str}<br>
+    {f"<b>Géneros:</b> {genres}<br>" if isinstance(genres, str) and genres else ""}
+    {f"<b>Director(es):</b> {directors}<br>" if isinstance(directors, str) and directors else ""}
+    <b>Premios:</b> {awards_text}<br>
+    <b>Streaming (CL):</b> {platforms_str}<br>
+    {link_html}<br>
+    {imdb_link_html}<br>
+    <b>Reseñas:</b> {reseñas_html}
+  </div>
+</div>
+"""
                 st.markdown(info_html, unsafe_allow_html=True)
 
     # ============================================================
@@ -1268,16 +1255,16 @@ with tab_catalog:
 
                     st.markdown(
                         f"""
-                        <div class="movie-card" style="
-                            border-color: {border_color};
-                            box-shadow:
-                                0 0 0 1px rgba(15,23,42,0.9),
-                                0 0 24px {glow_color};
-                            margin-bottom: 22px;
-                        ">
-                          <div class="movie-title">{etiqueta}</div>
-                          <div class="movie-sub">
-                        """,
+<div class="movie-card" style="
+    border-color: {border_color};
+    box-shadow:
+        0 0 0 1px rgba(15,23,42,0.9),
+        0 0 24px {glow_color};
+    margin-bottom: 22px;
+">
+  <div class="movie-title">{etiqueta}</div>
+  <div class="movie-sub">
+""",
                         unsafe_allow_html=True,
                     )
 
@@ -1320,7 +1307,7 @@ with tab_catalog:
             st.write("No se encontró la columna 'Your Rating' en el CSV.")
 
     # ============================================================
-    #               GALERÍA VISUAL PAGINADA (CARÁTULAS EN GRID)
+    #               GALERÍA VISUAL PAGINADA (GRID)
     # ============================================================
 
     st.markdown("---")
@@ -1364,7 +1351,6 @@ with tab_catalog:
 
         st.caption(f"Página {current_page} de {num_pages}")
 
-        # Construimos la galería como HTML completo
         cards_html = ['<div class="movie-gallery-grid">']
 
         for _, row in page_df.iterrows():
@@ -1392,20 +1378,19 @@ with tab_catalog:
 
             if isinstance(poster_url, str) and poster_url:
                 poster_html = f"""
-                <div class="movie-poster-frame">
-                  <img src="{poster_url}" alt="{titulo}" class="movie-poster-img">
-                </div>
-                """
+<div class="movie-poster-frame">
+  <img src="{poster_url}" alt="{titulo}" class="movie-poster-img">
+</div>
+"""
             else:
-                # Placeholder carrete vintage
                 poster_html = """
-                <div class="movie-poster-frame">
-                  <div class="movie-poster-placeholder">
-                    <div class="film-reel-icon">🎞️</div>
-                    <div class="film-reel-text">Sin póster</div>
-                  </div>
-                </div>
-                """
+<div class="movie-poster-frame">
+  <div class="movie-poster-placeholder">
+    <div class="film-reel-icon">🎞️</div>
+    <div class="film-reel-text">Sin póster</div>
+  </div>
+</div>
+"""
 
             year_str = f" ({fmt_year(year)})" if pd.notna(year) else ""
             nota_str = f"⭐ Mi nota: {fmt_rating(nota)}" if pd.notna(nota) else ""
@@ -1415,7 +1400,6 @@ with tab_catalog:
                 if tmdb_rating is not None else "TMDb: N/A"
             )
 
-            # Premios (OMDb) controlados por checkbox
             if show_awards:
                 awards = get_omdb_awards(titulo, year)
             else:
@@ -1495,28 +1479,28 @@ with tab_catalog:
             )
 
             card_html = f"""
-            <div class="movie-card movie-card-grid" style="
-                border-color: {border_color};
-                box-shadow:
-                    0 0 0 1px rgba(15,23,42,0.9),
-                    0 0 20px {glow_color};
-            ">
-              {poster_html}
-              <div class="movie-title">{titulo}{year_str}</div>
-              <div class="movie-sub">
-                {nota_str}<br>
-                {imdb_str}<br>
-                {tmdb_str}<br>
-                {genres_html}
-                {directors_html}
-                <b>Premios:</b> {awards_text}<br>
-                <b>Streaming (CL):</b> {platforms_str}<br>
-                {link_html}<br>
-                {imdb_link_html}<br>
-                <b>Reseñas:</b> {reseñas_html}
-              </div>
-            </div>
-            """
+<div class="movie-card movie-card-grid" style="
+    border-color: {border_color};
+    box-shadow:
+        0 0 0 1px rgba(15,23,42,0.9),
+        0 0 20px {glow_color};
+">
+{poster_html}
+  <div class="movie-title">{titulo}{year_str}</div>
+  <div class="movie-sub">
+    {nota_str}<br>
+    {imdb_str}<br>
+    {tmdb_str}<br>
+    {genres_html}
+    {directors_html}
+    <b>Premios:</b> {awards_text}<br>
+    <b>Streaming (CL):</b> {platforms_str}<br>
+    {link_html}<br>
+    {imdb_link_html}<br>
+    <b>Reseñas:</b> {reseñas_html}
+  </div>
+</div>
+"""
             cards_html.append(card_html)
 
         cards_html.append("</div>")
@@ -1897,25 +1881,25 @@ with tab_analysis:
 
                         st.markdown(
                             f"""
-                            <div class="movie-card" style="
-                                border-color: {border_color};
-                                box-shadow:
-                                    0 0 0 1px rgba(15,23,42,0.9),
-                                    0 0 26px {glow_color};
-                                margin-bottom: 12px;
-                            ">
-                              <div class="movie-title">
-                                {titulo}{f" ({int(year)})" if pd.notna(year) else ""}
-                              </div>
-                              <div class="movie-sub">
-                                ⭐ Mi nota: {float(my_rating):.1f}<br>
-                                IMDb: {float(imdb_rating):.1f}<br>
-                                Diferencia (Mi − IMDb): {diff_val:.1f}<br>
-                                {("<b>Géneros:</b> " + genres + "<br>") if isinstance(genres, str) and genres else ""}
-                                {f'<a href="{url}" target="_blank">Ver en IMDb</a>' if isinstance(url, str) and url.startswith("http") else ""}<br>
-                                <b>Reseñas:</b> {reseñas_html}
-                              </div>
-                            </div>
+<div class="movie-card" style="
+    border-color: {border_color};
+    box-shadow:
+        0 0 0 1px rgba(15,23,42,0.9),
+        0 0 26px {glow_color};
+    margin-bottom: 12px;
+">
+  <div class="movie-title">
+    {titulo}{f" ({int(year)})" if pd.notna(year) else ""}
+  </div>
+  <div class="movie-sub">
+    ⭐ Mi nota: {float(my_rating):.1f}<br>
+    IMDb: {float(imdb_rating):.1f}<br>
+    Diferencia (Mi − IMDb): {diff_val:.1f}<br>
+    {("<b>Géneros:</b> " + genres + "<br>") if isinstance(genres, str) and genres else ""}
+    {f'<a href="{url}" target="_blank">Ver en IMDb</a>' if isinstance(url, str) and url.startswith("http") else ""}<br>
+    <b>Reseñas:</b> {reseñas_html}
+  </div>
+</div>
                             """,
                             unsafe_allow_html=True,
                         )
@@ -2377,29 +2361,29 @@ with tab_what:
                 with col_info:
                     st.markdown(
                         f"""
-                        <div class="movie-card" style="
-                            border-color: {border_color};
-                            box-shadow:
-                                0 0 0 1px rgba(15,23,42,0.9),
-                                0 0 26px {glow_color};
-                            margin-bottom: 10px;
-                        ">
-                          <div class="movie-title">
-                            {titulo}{f" ({int(year)})" if pd.notna(year) else ""}
-                          </div>
-                          <div class="movie-sub">
-                            {f"⭐ Mi nota: {fmt_rating(nota)}<br>" if pd.notna(nota) else ""}
-                            {f"IMDb: {fmt_rating(imdb_rating)}<br>" if pd.notna(imdb_rating) else ""}
-                            {tmdb_str}<br>
-                            <b>Géneros:</b> {genres}<br>
-                            <b>Director(es):</b> {directors}<br>
-                            <b>Premios:</b> {awards_text}<br>
-                            <b>Streaming (CL):</b> {platforms_str}<br>
-                            {link_html}<br>
-                            {imdb_link_html}<br>
-                            <b>Reseñas:</b> {reseñas_html}
-                          </div>
-                        </div>
+<div class="movie-card" style="
+    border-color: {border_color};
+    box-shadow:
+        0 0 0 1px rgba(15,23,42,0.9),
+        0 0 26px {glow_color};
+    margin-bottom: 10px;
+">
+  <div class="movie-title">
+    {titulo}{f" ({int(year)})" if pd.notna(year) else ""}
+  </div>
+  <div class="movie-sub">
+    {f"⭐ Mi nota: {fmt_rating(nota)}<br>" if pd.notna(nota) else ""}
+    {f"IMDb: {fmt_rating(imdb_rating)}<br>" if pd.notna(imdb_rating) else ""}
+    {tmdb_str}<br>
+    <b>Géneros:</b> {genres}<br>
+    <b>Director(es):</b> {directors}<br>
+    <b>Premios:</b> {awards_text}<br>
+    <b>Streaming (CL):</b> {platforms_str}<br>
+    {link_html}<br>
+    {imdb_link_html}<br>
+    <b>Reseñas:</b> {reseñas_html}
+  </div>
+</div>
                         """,
                         unsafe_allow_html=True,
                     )
@@ -2409,7 +2393,6 @@ with tab_what:
                     "y si puedo verla fácilmente en streaming en Chile."
                 )
 
-    # Pequeño ranking extra de sugerencias
     st.markdown("---")
     st.markdown("### 📌 Otras sugerencias rápidas (según mis notas)")
 

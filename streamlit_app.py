@@ -1023,7 +1023,10 @@ with tab_catalog:
                     availability = None
 
                 if isinstance(poster_url, str) and poster_url:
-                    st.image(poster_url)
+                    try:
+                        st.image(poster_url)
+                    except Exception:
+                        st.write("Sin póster")
                 else:
                     st.write("Sin póster")
 
@@ -1185,7 +1188,10 @@ with tab_catalog:
                             tmdb_info = get_tmdb_basic_info(titulo, year)
                             poster_url = tmdb_info.get("poster_url") if tmdb_info else None
                             if isinstance(poster_url, str) and poster_url:
-                                st.image(poster_url)
+                                try:
+                                    st.image(poster_url)
+                                except Exception:
+                                    st.write("Sin póster")
                             else:
                                 st.write("Sin póster")
                         else:
@@ -1272,7 +1278,10 @@ with tab_catalog:
                 poster_url = tmdb_info.get("poster_url") if tmdb_info else None
 
                 if isinstance(poster_url, str) and poster_url:
-                    st.image(poster_url, use_container_width=True)
+                    try:
+                        st.image(poster_url, use_container_width=True)
+                    except Exception:
+                        st.write("Sin póster")
                 else:
                     st.write("Sin póster")
 
@@ -2142,7 +2151,10 @@ with tab_what:
 
                 with col_img:
                     if isinstance(poster_url, str) and poster_url:
-                        st.image(poster_url)
+                        try:
+                            st.image(poster_url)
+                        except Exception:
+                            st.write("Sin póster")
                     else:
                         st.write("Sin póster")
 

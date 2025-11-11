@@ -11,6 +11,7 @@ import random
 
 st.set_page_config(page_title="🎬 Mi Catálogo de Películas", layout="wide", page_icon="🎥")
 
+# Estilos visuales
 st.markdown("""
 <style>
 div.block-container { padding-top: 2.8rem; }
@@ -46,12 +47,18 @@ body, .stApp { font-size: 0.95rem !important; color: #e6e6e6 !important; }
 """, unsafe_allow_html=True)
 
 # ============================================================
-# CLAVES DE API
+# CLAVES DE API (MANEJO SEGURO)
 # ============================================================
 
-TMDB_KEY = st.secrets["general"]["TMDB_API_KEY"]
-OMDB_KEY = st.secrets["general"]["OMDB_API_KEY"]
-YT_KEY   = st.secrets["general"]["YOUTUBE_API_KEY"]
+def get_secret(key):
+    return st.secrets.get("general", {}).get(key, "")
+
+TMDB_KEY = get_secret("TMDB_API_KEY")
+OMDB_KEY = get_secret("OMDB_API_KEY")
+YT_KEY   = get_secret("YOUTUBE_API_KEY")
+
+if not any([TMDB_KEY, OMDB_KEY, YT_KEY]):
+    st.warning("⚠️ No se detectaron claves API. Puedes agregarlas en .streamlit/secrets.toml dentro del bloque [general].")
 
 # ============================================================
 # FUNCIONES UTILITARIAS
@@ -71,6 +78,7 @@ def load_data(csv_path):
 
 @st.cache_data
 def get_tmdb_basic_info(title, year):
+    if not TMDB_KEY: return None
     q = quote(title)
     url = f"https://api.themoviedb.org/3/search/movie?api_key={TMDB_KEY}&query={q}&year={year}"
     r = requests.get(url).json()
@@ -85,6 +93,7 @@ def get_tmdb_basic_info(title, year):
 
 @st.cache_data
 def get_youtube_trailer_url(title, year, region="CL"):
+    if not YT_KEY: return None
     query = f"{title} {year} tráiler oficial"
     url = f"https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=1&key={YT_KEY}&q={quote(query)}&regionCode={region}"
     try:
@@ -111,7 +120,10 @@ st.caption("Explora tu colección de películas con tráilers, datos y recomenda
 # ============================================================
 
 query = st.text_input("🔍 Buscar por título, director o género...").strip().lower()
-filtered = df[df.apply(lambda row: query in row["Title"].lower() or query in str(row["Directors"]).lower() or query in str(row["Genres"]).lower(), axis=1)] if query else df
+filtered = df[df.apply(
+    lambda row: query in row["Title"].lower() or query in str(row["Directors"]).lower() or query in str(row["Genres"]).lower(),
+    axis=1
+)] if query else df
 
 # ============================================================
 # TABS PRINCIPALES
@@ -127,7 +139,6 @@ with tab_gallery:
     st.markdown("## 🎥 Galería visual")
     st.caption("Haz clic en una película para ver su tráiler y más detalles.")
 
-    # Paginación
     page_size = 12
     total_pages = max(1, (len(filtered) + page_size - 1) // page_size)
     page = st.number_input("Página", min_value=1, max_value=total_pages, value=1)
@@ -156,7 +167,7 @@ with tab_gallery:
 with tab_analysis:
     st.markdown("## 📊 Estadísticas de tu catálogo")
     st.caption("Usa los filtros de la barra lateral para explorar tus datos.")
-    # Aquí puedes mantener tus gráficos y análisis previos
+    # Aquí puedes mantener tus gráficos previos
 
 # ============================================================
 # TAB 3: LISTA AFI
@@ -218,7 +229,6 @@ with tab_recs:
     else:
         st.info("No se encontró tráiler disponible en YouTube.")
 
-    # Recomendaciones basadas en géneros
     st.markdown("### 🎯 Recomendaciones similares en tu catálogo")
     genres = set(peli["GenreList"])
     similares = df[df["Title"] != peli["Title"]].copy()
@@ -227,8 +237,7 @@ with tab_recs:
     for _, r in recs.iterrows():
         st.write(f"- **{r['Title']}** ({fmt_year(r['Year'])}) — {', '.join(r['GenreList'])}")
 
-    # Recomendaciones externas (TMDb)
-    if tmdb:
+    if tmdb and TMDB_KEY:
         st.markdown("### 🌐 Recomendaciones fuera de tu catálogo")
         try:
             tid = tmdb["id"]

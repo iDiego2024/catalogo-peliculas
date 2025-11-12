@@ -8,7 +8,6 @@ from modules.utils import (
 )
 
 def render_catalog_tab(df, search_query):
-    st.markdown("## 🎬 Catálogo de Películas")
 
     # ------------------- FILTROS EN SIDEBAR -------------------
     st.sidebar.header("🎛️ Filtros del Catálogo")

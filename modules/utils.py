@@ -8,7 +8,7 @@ from urllib.parse import quote_plus
 from .styles import GOLDEN_CSS
 
 # --------- Versión de la app ----------
-APP_VERSION = "v2.1.1"
+APP_VERSION = "v2.1.2"  # bump por fix de load_data
 
 # --------- Config APIs externas --------
 TMDB_API_KEY = st.secrets.get("TMDB_API_KEY", None)
@@ -143,31 +143,59 @@ def show_changelog_sidebar():
 def load_data(file_path_or_buffer):
     df = pd.read_csv(file_path_or_buffer)
 
+    # numéricas
     df["Your Rating"] = pd.to_numeric(df.get("Your Rating"), errors="coerce")
     df["IMDb Rating"] = pd.to_numeric(df.get("IMDb Rating"), errors="coerce")
 
+    # Year
     if "Year" in df.columns:
         df["Year"] = df["Year"].astype(str).str.extract(r"(\d{4})")[0].astype(float)
     else:
         df["Year"] = None
 
-    df["Genres"] = (df.get("Genres") or "").fillna("")
-    df["Directors"] = (df.get("Directors") or "").fillna("")
+    # ---- FIX: NO usar `or ""` con Series ----
+    if "Genres" in df.columns:
+        df["Genres"] = df["Genres"].fillna("")
+    else:
+        df["Genres"] = ""
+
+    if "Directors" in df.columns:
+        df["Directors"] = df["Directors"].fillna("")
+    else:
+        df["Directors"] = ""
+
+    # listas de géneros
     df["GenreList"] = df["Genres"].apply(
         lambda x: [] if pd.isna(x) or x == "" else str(x).split(", ")
     )
 
+    # fecha
     if "Date Rated" in df.columns:
         df["Date Rated"] = pd.to_datetime(df["Date Rated"], errors="coerce").dt.date
 
-    search_cols = [c for c in ["Title", "Original Title", "Directors", "Genres", "Year", "Your Rating", "IMDb Rating"] if c in df.columns]
-    df["SearchText"] = (
-        df[search_cols].astype(str).apply(lambda row: " ".join(row), axis=1).str.lower()
-        if search_cols else ""
-    )
+    # texto de búsqueda
+    search_cols = [
+        c for c in ["Title", "Original Title", "Directors", "Genres", "Year", "Your Rating", "IMDb Rating"]
+        if c in df.columns
+    ]
+    if search_cols:
+        df["SearchText"] = (
+            df[search_cols].astype(str).apply(lambda row: " ".join(row), axis=1).str.lower()
+        )
+    else:
+        df["SearchText"] = ""
 
-    df["NormTitle"] = df["Title"].apply(normalize_title) if "Title" in df else ""
-    df["YearInt"] = df["Year"].fillna(-1).astype(int) if "Year" in df else -1
+    # auxiliares
+    if "Title" in df.columns:
+        df["NormTitle"] = df["Title"].apply(normalize_title)
+    else:
+        df["NormTitle"] = ""
+
+    if "Year" in df.columns:
+        df["YearInt"] = df["Year"].fillna(-1).astype(int)
+    else:
+        df["YearInt"] = -1
+
     return df
 
 # ================== HELPERS ==============================

@@ -1,11 +1,9 @@
 # -*- coding: utf-8 -*-
-import os
 from pathlib import Path
 import streamlit as st
 import pandas as pd
 
 # -------------------- Imports de módulos propios --------------------
-# Nota: utils.py ya fue actualizado para el bug de pandas (Series "truth value")
 from modules.utils import (
     APP_VERSION,
     apply_theme_and_css,
@@ -13,7 +11,7 @@ from modules.utils import (
     load_data,
 )
 
-# Tabs (algunas instalaciones tienen firmas distintas: df vs df,cfg)
+# Tabs (pueden tener firmas distintas según versión)
 import modules.imdb_catalog as imdb_catalog
 import modules.analytics as analytics
 import modules.afi_list as afi_list
@@ -60,7 +58,7 @@ if "Title" not in df.columns:
 # -------------------- Opciones de UI / funciones extra --------------
 st.title("🎥 Mi catálogo de películas (IMDb)")
 
-# Barra lateral de opciones (se comparte con módulos)
+# Barra lateral de opciones compartidas
 st.sidebar.header("🖼️ Opciones de visualización")
 show_posters_fav = st.sidebar.checkbox(
     "Mostrar pósters TMDb en mis favoritas (nota ≥ 9)",
@@ -89,7 +87,6 @@ show_awards = st.sidebar.checkbox(
     key="opt_show_awards"
 )
 
-# Filtros comunes (cada módulo puede leerlos desde cfg si los necesita)
 cfg = {
     "use_tmdb_gallery": use_tmdb_gallery,
     "show_posters_fav": show_posters_fav,
@@ -97,23 +94,34 @@ cfg = {
     "show_awards": show_awards,
 }
 
-# -------------------- Helper para compatibilidad de firmas ----------
-def _call_tab(func, *args, **kwargs):
+# -------------------- Helpers de compatibilidad ---------------------
+def _call_tab_any(func, df, cfg):
     """
-    Llama a una función de render de tab tratando de ser compatible con
-    firmas antiguas y nuevas:
-      - nueva: func(df, cfg=cfg)
-      - vieja: func(df)
+    Compatibilidad genérica para tabs con firma nueva (df, cfg) o vieja (df).
     """
     try:
-        return func(*args, **kwargs)                      # intento directo (por si ya pasamos cfg)
+        return func(df, cfg=cfg)
     except TypeError:
-        # Reintenta con df solamente (firma antigua)
-        if len(args) >= 1:
-            return func(args[0])
-        else:
-            # Último recurso: sin args (muy raro)
-            return func()
+        return func(df)
+
+def _call_catalog(func, df, search_query, cfg):
+    """
+    Compatibilidad específica del Catálogo:
+      1) func(df, search_query, cfg=cfg)
+      2) func(df, search_query)
+      3) func(df, cfg=cfg)
+      4) func(df)
+    """
+    try:
+        return func(df, search_query, cfg=cfg)
+    except TypeError:
+        try:
+            return func(df, search_query)
+        except TypeError:
+            try:
+                return func(df, cfg=cfg)
+            except TypeError:
+                return func(df)
 
 # -------------------- Tabs principales ------------------------------
 tab_catalog, tab_analysis, tab_awards, tab_afi = st.tabs(
@@ -122,9 +130,15 @@ tab_catalog, tab_analysis, tab_awards, tab_afi = st.tabs(
 
 # -------------------- TAB: Catálogo ---------------------------------
 with tab_catalog:
-    # Intento moderno: df + cfg (si falla, reintenta con df)
+    # Campo de búsqueda global (lo pasamos si el módulo lo requiere)
+    search_query = st.text_input(
+        "🔎 Búsqueda en mi catálogo (título, director, género, año o calificaciones)",
+        placeholder="Escribe para filtrar (el módulo puede aplicar más filtros internos)…",
+        key="global_search_query"
+    )
+
     try:
-        _call_tab(imdb_catalog.render_catalog_tab, df, cfg=cfg)
+        _call_catalog(imdb_catalog.render_catalog_tab, df, search_query, cfg)
     except Exception as e:
         st.error("Ocurrió un error al renderizar el catálogo.")
         st.exception(e)
@@ -132,7 +146,7 @@ with tab_catalog:
 # -------------------- TAB: Análisis ---------------------------------
 with tab_analysis:
     try:
-        _call_tab(analytics.render_analysis_tab, df, cfg=cfg)
+        _call_tab_any(analytics.render_analysis_tab, df, cfg)
     except Exception as e:
         st.error("Ocurrió un error al renderizar el análisis.")
         st.exception(e)
@@ -140,7 +154,7 @@ with tab_analysis:
 # -------------------- TAB: Premios (OMDb) ---------------------------
 with tab_awards:
     try:
-        _call_tab(oscars_awards.render_awards_tab, df, cfg=cfg)
+        _call_tab_any(oscars_awards.render_awards_tab, df, cfg)
     except Exception as e:
         st.error("Ocurrió un error al renderizar la sección de premios.")
         st.exception(e)
@@ -148,7 +162,7 @@ with tab_awards:
 # -------------------- TAB: AFI 100 ----------------------------------
 with tab_afi:
     try:
-        _call_tab(afi_list.render_afi_tab, df, cfg=cfg)
+        _call_tab_any(afi_list.render_afi_tab, df, cfg)
     except Exception as e:
         st.error("Ocurrió un error al renderizar la lista AFI.")
         st.exception(e)

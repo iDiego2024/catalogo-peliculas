@@ -1,193 +1,61 @@
-# -*- coding: utf-8 -*-
-from pathlib import Path
+# app.py
 import streamlit as st
-import pandas as pd
-
-# -------------------- Imports de módulos propios --------------------
+from modules import imdb_catalog, analytics, afi_list, oscars_awards
 from modules.utils import (
-    APP_VERSION,
-    apply_theme_and_css,
-    show_changelog_sidebar,
-    load_data,
+    load_data, apply_theme_and_css, show_changelog_sidebar, APP_VERSION
 )
 
-# Tabs (pueden tener firmas distintas según versión)
-import modules.imdb_catalog as imdb_catalog
-import modules.analytics as analytics
-import modules.afi_list as afi_list
-import modules.oscars_awards as oscars_awards
-
-# -------------------- Config básica de la app -----------------------
+# ----------------- CONFIGURACIÓN INICIAL -----------------
 st.set_page_config(
-    page_title="🎬 Mi catálogo de Películas",
-    layout="centered"  # el CSS ajusta el ancho en escritorio
+    page_title="🎥 Mi Catálogo de Películas (IMDb)",
+    layout="wide",
+    page_icon="🎬"
 )
 
 apply_theme_and_css()
+show_changelog_sidebar()
 
-# -------------------- Sidebar: versión y changelog ------------------
-with st.sidebar:
-    st.markdown(f"**Versión:** `{APP_VERSION}`")
-    show_changelog_sidebar()
-
-# -------------------- Paths y carga de CSV --------------------------
-BASE_DIR = Path(__file__).parent
-
-st.sidebar.header("📂 Datos")
-uploaded = st.sidebar.file_uploader(
-    "Sube tu CSV de IMDb (si no, se usa peliculas.csv del repo)",
-    type=["csv"]
-)
-
-if uploaded is not None:
-    df = load_data(uploaded)
-else:
-    csv_path = BASE_DIR / "peliculas.csv"
-    if not csv_path.exists():
-        st.error(
-            "No se encontró **peliculas.csv** en el repo y no se subió archivo.\n\n"
-            "👉 Sube tu CSV desde la barra lateral para continuar."
-        )
-        st.stop()
-    df = load_data(str(csv_path))
-
-if "Title" not in df.columns:
-    st.error("El CSV debe contener una columna **Title** para poder funcionar.")
-    st.stop()
-
-# -------------------- Opciones de UI / funciones extra --------------
 st.title("🎥 Mi catálogo de películas (IMDb)")
 
-# ---- BAJADA: resumen de filtros activos (pegar justo después del st.title) ----
-def _ss_get(name, default):
-    return st.session_state.get(name, default)
+# ----------------- CARGA DE DATOS -----------------
+df = load_data("peliculas.csv")
 
-# Detecta rangos si los guardas en session_state; si no, calcula por defecto
-try:
-    min_year = int(float(df["Year"].min())) if "Year" in df.columns and df["Year"].notna().any() else 1900
-    max_year = int(float(df["Year"].max())) if "Year" in df.columns and df["Year"].notna().any() else 2100
-except Exception:
-    min_year, max_year = 1900, 2100
-
-year_range = _ss_get("filter_year_range", (min_year, max_year))
-rating_range = _ss_get("filter_rating_range", (1, 10))
-selected_genres = _ss_get("filter_genres", [])
-selected_directors = _ss_get("filter_directors", [])
-
-st.caption(
-    f"Filtros activos → Años: {year_range[0]}–{year_range[1]} | "
-    f"Mi nota: {rating_range[0]}–{rating_range[1]} | "
-    f"Géneros: {', '.join(selected_genres) if selected_genres else 'Todos'} | "
-    f"Directores: {', '.join(selected_directors) if selected_directors else 'Todos'}"
-)
-# ---- FIN BAJADA ----
-
-
-# Barra lateral de opciones compartidas
-st.sidebar.header("🖼️ Opciones de visualización")
-show_posters_fav = st.sidebar.checkbox(
-    "Mostrar pósters TMDb en mis favoritas (nota ≥ 9)",
-    value=True,
-    key="opt_show_posters_fav"
+# ----------------- BÚSQUEDA -----------------
+st.markdown("### 🔎 Búsqueda en mi catálogo")
+search_query = st.text_input(
+    "Buscar por título, director, género, año o calificación",
+    placeholder="Escribe algo...",
+    key="search_query"
 )
 
-st.sidebar.header("🌐 TMDb")
-use_tmdb_gallery = st.sidebar.checkbox(
-    "Usar TMDb en la galería visual",
-    value=True,
-    key="opt_use_tmdb_gallery"
+# ----------------- TABS -----------------
+tab_catalog, tab_awards, tab_afi, tab_analytics = st.tabs(
+    ["🎬 Mi colección", "🏆 Premios", "🎞️ AFI", "📊 Análisis"]
 )
 
-st.sidebar.header("🎬 Tráilers")
-show_trailers = st.sidebar.checkbox(
-    "Mostrar tráiler de YouTube (si hay API key)",
-    value=True,
-    key="opt_show_trailers"
-)
-
-st.sidebar.header("⚙️ Opciones avanzadas")
-show_awards = st.sidebar.checkbox(
-    "Consultar premios en OMDb (puede ser más lento, usa cuota de API)",
-    value=False,
-    key="opt_show_awards"
-)
-
-cfg = {
-    "use_tmdb_gallery": use_tmdb_gallery,
-    "show_posters_fav": show_posters_fav,
-    "show_trailers": show_trailers,
-    "show_awards": show_awards,
-}
-
-# -------------------- Helpers de compatibilidad ---------------------
-def _call_tab_any(func, df, cfg):
-    """
-    Compatibilidad genérica para tabs con firma nueva (df, cfg) o vieja (df).
-    """
-    try:
-        return func(df, cfg=cfg)
-    except TypeError:
-        return func(df)
-
-def _call_catalog(func, df, search_query, cfg):
-    """
-    Compatibilidad específica del Catálogo:
-      1) func(df, search_query, cfg=cfg)
-      2) func(df, search_query)
-      3) func(df, cfg=cfg)
-      4) func(df)
-    """
-    try:
-        return func(df, search_query, cfg=cfg)
-    except TypeError:
-        try:
-            return func(df, search_query)
-        except TypeError:
-            try:
-                return func(df, cfg=cfg)
-            except TypeError:
-                return func(df)
-
-# -------------------- Tabs principales ------------------------------
-tab_catalog, tab_analysis, tab_awards, tab_afi = st.tabs(
-    ["🎬 Catálogo", "📊 Análisis", "🏆 Premios", "🎖 AFI 100"]
-)
-
-# -------------------- TAB: Catálogo ---------------------------------
 with tab_catalog:
-    # Campo de búsqueda global (lo pasamos si el módulo lo requiere)
-    search_query = st.text_input(
-        "🔎 Búsqueda en mi catálogo (título, director, género, año o calificaciones)",
-        placeholder="Escribe para filtrar (el módulo puede aplicar más filtros internos)…",
-        key="global_search_query"
-    )
+    # Catálogo IMDb
+    imdb_catalog.render_catalog_tab(df, search_query)
 
-    try:
-        _call_catalog(imdb_catalog.render_catalog_tab, df, search_query, cfg)
-    except Exception as e:
-        st.error("Ocurrió un error al renderizar el catálogo.")
-        st.exception(e)
-
-# -------------------- TAB: Análisis ---------------------------------
-with tab_analysis:
-    try:
-        _call_tab_any(analytics.render_analysis_tab, df, cfg)
-    except Exception as e:
-        st.error("Ocurrió un error al renderizar el análisis.")
-        st.exception(e)
-
-# -------------------- TAB: Premios (OMDb) ---------------------------
 with tab_awards:
-    try:
-        _call_tab_any(oscars_awards.render_awards_tab, df, cfg)
-    except Exception as e:
-        st.error("Ocurrió un error al renderizar la sección de premios.")
-        st.exception(e)
+    # Premios (Oscar)
+    oscars_awards.render_awards_tab(df)
 
-# -------------------- TAB: AFI 100 ----------------------------------
 with tab_afi:
-    try:
-        _call_tab_any(afi_list.render_afi_tab, df, cfg)
-    except Exception as e:
-        st.error("Ocurrió un error al renderizar la lista AFI.")
-        st.exception(e)
+    # AFI
+    afi_list.render_afi_tab(df)
+
+with tab_analytics:
+    # Estadísticas
+    analytics.render_analysis_tab(df)
+
+# ----------------- PIE DE PÁGINA -----------------
+st.markdown(
+    f"""
+    <hr style="margin-top:40px;opacity:0.4">
+    <div style='text-align:center; font-size:0.9rem; color:#aaa;'>
+        <b>Versión {APP_VERSION}</b> — powered by Diego Leal
+    </div>
+    """,
+    unsafe_allow_html=True,
+)

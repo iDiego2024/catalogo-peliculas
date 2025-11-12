@@ -1,17 +1,18 @@
-# app.py  — v1.2.0 (carátula visual + orquestación de pestañas)
+# app.py — v1.2.0
+# Diego Leal · Catálogo de Películas (versión modular con tema original)
 
 import streamlit as st
 
 APP_VERSION = "1.2.0"
 
-# ====== Config de página (tema y look&feel idéntico al original) ======
+# ================== CONFIGURACIÓN VISUAL ==================
 st.set_page_config(
     page_title=f"🎬 Mi catálogo de películas (IMDb) · v{APP_VERSION}",
     page_icon="🎞️",
     layout="wide",
 )
 
-# ---- CSS (tema oscuro + detalles visuales) ----
+# ---- Tema oscuro y estilos idénticos al original ----
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800&display=swap');
@@ -40,73 +41,32 @@ button[kind="secondary"], button[kind="primary"], .stButton > button {
 </style>
 """, unsafe_allow_html=True)
 
-# ====== Encabezado ======
+# ================== TÍTULO PRINCIPAL ==================
 st.title("🎥 Mi catálogo de películas (IMDb)")
 
-# ==============================================================
-#  Imports de módulos (ajusta nombres si tus archivos difieren)
-# ==============================================================
-
-# Opción A: módulos por pestaña (recomendado)
+# ================== IMPORTACIÓN DE MÓDULOS ==================
 try:
-    from modules.data_io import load_catalog  # lectura del CSV y normalizaciones comunes
-    from modules.tab_catalog import render_catalog_tab
-    from modules.tab_analysis import render_analysis_tab
-    from modules.tab_afi import render_afi_tab
-    from modules.tab_oscars import render_oscars_tab
-    from modules.tab_what_to_watch import render_what_tab
-    MODULE_MODE = "tabs"
-except Exception:
-    # Opción B: un solo módulo con un runner (por si tu modularización es diferente)
-    try:
-        from modules.app_core import run_app  # debe encapsular todo el flujo
-        MODULE_MODE = "core"
-    except Exception as e:
-        MODULE_MODE = None
-        st.error("No se pudieron importar los módulos. Revisa que la carpeta `modules/` exista y los nombres coincidan.")
-        st.exception(e)
+    from modules import imdb_catalog, analytics, oscars_awards
+    MODULE_MODE = "modular"
+except Exception as e:
+    MODULE_MODE = None
+    st.error("No se pudieron importar los módulos. Revisa que la carpeta `modules/` exista y los nombres coincidan.")
+    st.exception(e)
 
-# ==============================================================
-#  Carga de datos (sidebar) y estado compartido
-# ==============================================================
+# ================== CONTENIDO PRINCIPAL ==================
+if MODULE_MODE == "modular":
+    tab1, tab2, tab3 = st.tabs(["🎬 Catálogo", "📊 Análisis", "🏆 Premios Óscar"])
 
-if MODULE_MODE == "tabs":
-    with st.sidebar:
-        st.header("📂 Datos")
-        uploaded = st.file_uploader("Sube tu CSV de IMDb (si no, usaré `data/peliculas.csv`)", type=["csv"])
-        # `load_catalog` debe aceptar `uploaded` o ruta por defecto
-    df = load_catalog(uploaded)  # el módulo se encarga de usar data/peliculas.csv cuando uploaded es None
+    with tab1:
+        imdb_catalog.render_catalog_tab()
 
-    # Guardamos en session_state para que todos los tabs lo lean igual
-    st.session_state["catalog_df"] = df
+    with tab2:
+        analytics.render_analysis_tab()
 
-    # ==============================================================
-    #  Pestañas principales
-    # ==============================================================
-    tab_catalog, tab_analysis, tab_afi, tab_awards, tab_what = st.tabs(
-        ["🎬 Catálogo", "📊 Análisis", "🏆 Lista AFI", "🏆 Premios Óscar", "🎲 ¿Qué ver hoy?"]
-    )
+    with tab3:
+        oscars_awards.render_oscars_tab()
 
-    with tab_catalog:
-        render_catalog_tab(df)
-
-    with tab_analysis:
-        render_analysis_tab(df)
-
-    with tab_afi:
-        render_afi_tab(df)
-
-    with tab_awards:
-        render_oscars_tab(df)
-
-    with tab_what:
-        render_what_tab(df)
-
-elif MODULE_MODE == "core":
-    # Si tu modularización usa un solo “runner”, lo ejecutamos y listo.
-    run_app(APP_VERSION)
-
-# ====== Footer con versión (abajo) ======
+# ================== FOOTER ==================
 st.markdown(
     f"""
 <div class="footer-dl">

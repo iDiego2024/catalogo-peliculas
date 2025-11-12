@@ -3,37 +3,55 @@ import pandas as pd
 import re
 from modules.utils import normalize_title
 
+REQUIRED_COLS = [
+    "year_film", "year_ceremony", "ceremony", "category",
+    "canon_category", "name", "film"
+]
+
 @st.cache_data
 def load_oscar_winners(path_csv="the_oscar_award.csv"):
+    """Carga ganadores del CSV y normaliza columnas.
+    Tolera CSVs con nombres distintos o faltantes y crea columnas de respaldo.
+    """
     try:
-        dfw = pd.read_csv(path_csv)
+        raw = pd.read_csv(path_csv)
     except Exception as e:
         st.warning(f"No pude leer {path_csv}: {e}")
-        return pd.DataFrame()
+        return pd.DataFrame(columns=REQUIRED_COLS)
 
-    for c in ["year_film", "year_ceremony", "ceremony"]:
-        if c in dfw.columns:
-            dfw[c] = pd.to_numeric(dfw[c], errors="coerce")
+    dfw = raw.copy()
 
-    for c in ["category", "canon_category", "name", "film"]:
+    # Asegurar columnas requeridas
+    for c in REQUIRED_COLS:
         if c not in dfw.columns:
             dfw[c] = ""
 
+    # Normalizaciones numéricas
+    for c in ["year_film", "year_ceremony", "ceremony"]:
+        dfw[c] = pd.to_numeric(dfw[c], errors="coerce")
+
+    # Canon category (fallback a category si falta/está vacía)
+    dfw["canon_category"] = dfw["canon_category"].where(dfw["canon_category"].notna() & (dfw["canon_category"] != ""), dfw["category"])
+
+    # Enriquecidos para joins y filtros
     dfw["YearFilmInt"] = dfw["year_film"].fillna(-1).astype(int)
     dfw["YearCeremonyInt"] = dfw["year_ceremony"].fillna(-1).astype(int)
     dfw["NormFilm"] = dfw["film"].apply(normalize_title)
     dfw["NormName"] = dfw["name"].apply(lambda s: re.sub(r"\s+", " ", str(s)).strip().lower())
-    dfw["CanonCat"] = dfw["canon_category"].fillna(dfw["category"]).astype(str)
+    dfw["CanonCat"] = dfw["canon_category"].astype(str)
 
     return dfw
 
 def attach_my_catalog_cols(winners_df, my_catalog_df):
+    winners_df = winners_df.copy()
+
+    # columnas "mi catálogo"
+    winners_df["InMyCatalog"] = False
+    winners_df["MyRating"] = None
+    winners_df["MyIMDb"] = None
+    winners_df["CatalogURL"] = None
+
     if winners_df.empty or my_catalog_df is None or my_catalog_df.empty:
-        winners_df = winners_df.copy()
-        winners_df["InMyCatalog"] = False
-        winners_df["MyRating"] = None
-        winners_df["MyIMDb"] = None
-        winners_df["CatalogURL"] = None
         return winners_df
 
     cat = my_catalog_df.copy()
@@ -42,7 +60,6 @@ def attach_my_catalog_cols(winners_df, my_catalog_df):
     if "YearInt" not in cat.columns:
         cat["YearInt"] = cat.get("Year", pd.Series([None]*len(cat))).fillna(-1).astype(float).astype(int)
 
-    winners_df = winners_df.copy()
     winners_df["JoinTitle"] = winners_df["NormFilm"]
     winners_df["JoinYear"] = winners_df["YearFilmInt"]
 
@@ -67,25 +84,27 @@ def render_awards_tab(df):
 
     winners = load_oscar_winners("the_oscar_award.csv")
     if winners.empty:
-        st.info("No pude cargar ganadores (the_oscar_award.csv).")
+        st.info("No pude cargar ganadores (the_oscar_award.csv) o no trae columnas reconocibles.")
         return
 
     winners_x = attach_my_catalog_cols(winners, df)
 
+    # ------- Filtros robustos -------
     st.markdown("### 🎛️ Filtros en premios")
-    colf1, colf2, colf3 = st.columns([1, 1, 2])
 
-    if winners_x["YearCeremonyInt"].ne(-1).any():
-        min_cer = int(winners_x.loc[winners_x["YearCeremonyInt"] != -1, "YearCeremonyInt"].min())
-        max_cer = int(winners_x["YearCeremonyInt"].max())
-    else:
+    # Ceremonias (si no hay números válidos, definir rango seguro)
+    valid_cer = winners_x["YearCeremonyInt"][winners_x["YearCeremonyInt"] != -1]
+    if valid_cer.empty:
         min_cer, max_cer = 1927, 2025
+    else:
+        min_cer, max_cer = int(valid_cer.min()), int(valid_cer.max())
 
+    colf1, colf2, colf3 = st.columns([1, 1, 2])
     with colf1:
         year_range_osc = st.slider("Año de ceremonia", min_cer, max_cer, (min_cer, max_cer))
-    all_cats = sorted(winners_x["CanonCat"].dropna().unique().tolist())
     with colf2:
-        cats_sel = st.multiselect("Categorías (canon)", options=all_cats, default=[])
+        cats_all = sorted(winners_x["CanonCat"].dropna().astype(str).unique().tolist())
+        cats_sel = st.multiselect("Categorías (canon)", options=cats_all, default=[])
     with colf3:
         q_aw = st.text_input("Buscar en nombre/persona, película o categoría", placeholder="Ej: 'ACTRESS' o 'Spielberg' o 'Parasite'")
 
@@ -107,25 +126,31 @@ def render_awards_tab(df):
     c1, c2, c3, c4 = st.columns(4)
     with c1: st.metric("Ceremonias (rango)", f"{year_range_osc[0]}–{year_range_osc[1]}")
     with c2: st.metric("Ganadores (filtrados)", len(ff))
-    with c3: st.metric("Categorías distintas", ff["CanonCat"].nunique())
-    with c4: st.metric("Ganadores en mi catálogo", int(ff["InMyCatalog"].sum()))
+    with c3: st.metric("Categorías distintas", ff["CanonCat"].nunique() if not ff.empty else 0)
+    with c4: st.metric("Ganadores en mi catálogo", int(ff["InMyCatalog"].sum()) if not ff.empty else 0)
 
     st.caption("Los ganadores provienen de `the_oscar_award.csv`.")
 
+    # ------- Vista por año -------
     st.markdown("### 📅 Vista por año (categorías y ganadores)")
-    years_sorted = sorted(ff["YearCeremonyInt"].unique())
-    if years_sorted:
-        y_pick = st.selectbox("Elige año de ceremonia", options=years_sorted, index=len(years_sorted)-1, key="aw_select_year")
-        table_year = ff[ff["YearCeremonyInt"] == y_pick].copy()
-    else:
-        y_pick = None
-        table_year = pd.DataFrame()
+    if ff.empty or ff["YearCeremonyInt"].dropna().empty:
+        st.info("No hay ganadores para mostrar con los filtros actuales.")
+        return
 
+    years_sorted = sorted([int(y) for y in ff["YearCeremonyInt"].dropna().unique()])
+    y_idx = max(0, len(years_sorted) - 1)
+    y_pick = st.selectbox("Elige año de ceremonia", options=years_sorted, index=y_idx, key="aw_select_year")
+
+    table_year = ff[ff["YearCeremonyInt"] == y_pick].copy()
     if table_year.empty:
         st.info("No hay ganadores para ese año con los filtros actuales.")
     else:
         table_year = table_year.sort_values(["CanonCat", "film", "name"])
-        pretty = table_year[["CanonCat", "category", "name", "film", "YearFilmInt", "InMyCatalog", "MyRating", "MyIMDb", "CatalogURL"]].copy()
+        pretty = table_year[[
+            "CanonCat", "category", "name", "film",
+            "YearFilmInt", "InMyCatalog", "MyRating", "MyIMDb", "CatalogURL"
+        ]].copy()
+
         pretty = pretty.rename(columns={
             "CanonCat": "Categoría",
             "category": "Categoría (cruda)",
@@ -137,26 +162,45 @@ def render_awards_tab(df):
             "MyIMDb": "IMDb",
             "CatalogURL": "IMDb (mía)"
         })
+
         pretty["En mi catálogo"] = pretty["En mi catálogo"].map({True: "✅", False: "—"})
         if "Mi nota" in pretty.columns:
             pretty["Mi nota"] = pretty["Mi nota"].apply(lambda v: f"{float(v):.1f}" if pd.notna(v) else "")
         if "IMDb" in pretty.columns:
             pretty["IMDb"] = pretty["IMDb"].apply(lambda v: f"{float(v):.1f}" if pd.notna(v) else "")
+
         st.dataframe(pretty, use_container_width=True, hide_index=True)
 
+    # ------- Rankings -------
     st.markdown("### 🥇 Rankings en el rango seleccionado")
     colr1, colr2 = st.columns(2)
     with colr1:
-        top_films = ff.groupby(["film", "YearFilmInt"]).size().reset_index(name="Wins").sort_values(["Wins", "film"], ascending=[False, True]).head(15)
-        if not top_films.empty:
-            tf_disp = top_films.rename(columns={"film": "Película", "YearFilmInt": "Año", "Wins": "Óscar ganados"})
-            st.dataframe(tf_disp, use_container_width=True, hide_index=True)
+        if not ff.empty:
+            top_films = (
+                ff.groupby(["film", "YearFilmInt"])
+                  .size().reset_index(name="Wins")
+                  .sort_values(["Wins", "film"], ascending=[False, True]).head(15)
+            )
+            if not top_films.empty:
+                tf_disp = top_films.rename(columns={
+                    "film": "Película", "YearFilmInt": "Año", "Wins": "Óscar ganados"
+                })
+                st.dataframe(tf_disp, use_container_width=True, hide_index=True)
+            else:
+                st.write("Sin datos de películas en este rango.")
         else:
             st.write("Sin datos de películas en este rango.")
     with colr2:
-        top_people = ff.groupby("name").size().reset_index(name="Wins").sort_values(["Wins", "name"], ascending=[False, True]).head(15)
-        if not top_people.empty:
-            tp_disp = top_people.rename(columns={"name": "Ganador/a", "Wins": "Óscar ganados"})
-            st.dataframe(tp_disp, use_container_width=True, hide_index=True)
+        if not ff.empty:
+            top_people = (
+                ff.groupby("name")
+                  .size().reset_index(name="Wins")
+                  .sort_values(["Wins", "name"], ascending=[False, True]).head(15)
+            )
+            if not top_people.empty:
+                tp_disp = top_people.rename(columns={"name": "Ganador/a", "Wins": "Óscar ganados"})
+                st.dataframe(tp_disp, use_container_width=True, hide_index=True)
+            else:
+                st.write("Sin datos de personas en este rango.")
         else:
             st.write("Sin datos de personas en este rango.")

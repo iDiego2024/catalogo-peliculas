@@ -1,136 +1,89 @@
-# modules/analytics.py — pestaña 📊 Análisis
 import streamlit as st
 import pandas as pd
 import altair as alt
 
-def _fmt_year_col(s):
-    try:
-        return s.astype(int).astype(str)
-    except Exception:
-        return s
-
-def render_analysis_tab(df: pd.DataFrame):
+def render_analysis_tab(df):
     st.markdown("## 📊 Análisis y tendencias (según filtros, sin búsqueda)")
-    st.caption("Los gráficos usan todo tu catálogo cargado.")
+    st.caption("Los gráficos usan sólo los filtros de la barra lateral.")
 
-    if df.empty:
-        st.info("No hay datos para analizar.")
+    # Reaplicar los filtros básicos (sin búsqueda)
+    year_range = st.session_state.get("year_range", (0, 9999))
+    rating_range = st.session_state.get("rating_range", (0, 10))
+    selected_genres = st.session_state.get("selected_genres", [])
+    selected_directors = st.session_state.get("selected_directors", [])
+
+    filtered = df.copy()
+    if "Year" in filtered.columns:
+        filtered = filtered[(filtered["Year"] >= year_range[0]) & (filtered["Year"] <= year_range[1])]
+    if "Your Rating" in filtered.columns:
+        filtered = filtered[(filtered["Your Rating"] >= rating_range[0]) & (filtered["Your Rating"] <= rating_range[1])]
+
+    if selected_genres:
+        filtered = filtered[
+            filtered["GenreList"].apply(lambda gl: all(g in gl for g in selected_genres))
+        ]
+
+    if selected_directors:
+        def _matches_any_director(cell):
+            if pd.isna(cell): return False
+            dirs = [d.strip() for d in str(cell).split(",") if d.strip()]
+            return any(d in dirs for d in selected_directors)
+        filtered = filtered[filtered["Directors"].apply(_matches_any_director)]
+
+    if filtered.empty:
+        st.info("No hay datos bajo los filtros actuales para mostrar gráficos.")
         return
 
-    # Asegurar columnas mínimas
-    if "Year" not in df.columns:
-        df = df.assign(Year=None)
-    if "Your Rating" not in df.columns:
-        df = df.assign(**{"Your Rating": None})
-    if "IMDb Rating" not in df.columns:
-        df = df.assign(**{"IMDb Rating": None})
-    if "GenreList" not in df.columns and "Genres" in df.columns:
-        df = df.assign(GenreList=df["Genres"].fillna("").apply(lambda x: [] if x == "" else str(x).split(", ")))
-    elif "GenreList" not in df.columns:
-        df = df.assign(GenreList=[])
-
     col_a, col_b = st.columns(2)
-
-    # Películas por año
     with col_a:
         st.markdown("**Películas por año**")
         by_year = (
-            df[df["Year"].notna()]
-            .groupby("Year")
-            .size()
-            .reset_index(name="Count")
-            .sort_values("Year")
+            filtered[filtered["Year"].notna()].groupby("Year").size().reset_index(name="Count").sort_values("Year")
         )
         if not by_year.empty:
-            by_year["Year"] = _fmt_year_col(by_year["Year"])
-            st.line_chart(by_year.set_index("Year"))
+            by_year_display = by_year.copy()
+            by_year_display["Year"] = by_year_display["Year"].astype(int).astype(str)
+            by_year_display = by_year_display.set_index("Year")
+            st.line_chart(by_year_display)
         else:
             st.write("Sin datos de año.")
-
-    # Distribución de mi nota
     with col_b:
         st.markdown("**Distribución de mi nota (Your Rating)**")
-        if df["Your Rating"].notna().any():
-            rc = (
-                df["Your Rating"]
-                .round()
-                .value_counts()
-                .sort_index()
-                .reset_index()
-            )
-            rc.columns = ["Rating", "Count"]
-            rc["Rating"] = rc["Rating"].astype(int).astype(str)
-            st.bar_chart(rc.set_index("Rating"))
+        if "Your Rating" in filtered.columns and filtered["Your Rating"].notna().any():
+            ratings_counts = filtered["Your Rating"].round().value_counts().sort_index().reset_index()
+            ratings_counts.columns = ["Rating", "Count"]
+            ratings_counts["Rating"] = ratings_counts["Rating"].astype(int).astype(str)
+            ratings_counts = ratings_counts.set_index("Rating")
+            st.bar_chart(ratings_counts)
         else:
-            st.write("No hay notas propias.")
+            st.write("No hay notas mías disponibles.")
 
     col_c, col_d = st.columns(2)
-
-    # Top géneros
     with col_c:
         st.markdown("**Top géneros (por número de películas)**")
-        gexp = df.explode("GenreList")
-        gexp = gexp[gexp["GenreList"].notna() & (gexp["GenreList"] != "")]
-        if not gexp.empty:
-            tg = gexp["GenreList"].value_counts().head(15).reset_index()
-            tg.columns = ["Genre", "Count"]
-            st.bar_chart(tg.set_index("Genre"))
+        if "GenreList" in filtered.columns:
+            genres_exploded = filtered.explode("GenreList")
+            genres_exploded = genres_exploded[genres_exploded["GenreList"].notna() & (genres_exploded["GenreList"] != "")]
+            if not genres_exploded.empty:
+                top_genres = genres_exploded["GenreList"].value_counts().head(15).reset_index()
+                top_genres.columns = ["Genre", "Count"]
+                top_genres = top_genres.set_index("Genre")
+                st.bar_chart(top_genres)
+            else:
+                st.write("No hay géneros disponibles.")
         else:
-            st.write("No hay géneros.")
-
-    # IMDb promedio por década
+            st.write("No se encontró información de géneros.")
     with col_d:
         st.markdown("**IMDb promedio por década**")
-        tmp = df[df["Year"].notna() & df["IMDb Rating"].notna()].copy()
-        if not tmp.empty:
-            tmp["Decade"] = (tmp["Year"] // 10 * 10).astype(int)
-            di = tmp.groupby("Decade")["IMDb Rating"].mean().reset_index().sort_values("Decade")
-            di["Decade"] = di["Decade"].astype(int).astype(str)
-            st.line_chart(di.set_index("Decade"))
+        if "IMDb Rating" in filtered.columns and filtered["IMDb Rating"].notna().any():
+            tmp = filtered[filtered["Year"].notna()].copy()
+            if not tmp.empty:
+                tmp["Decade"] = (tmp["Year"] // 10 * 10).astype(int)
+                decade_imdb = tmp.groupby("Decade")["IMDb Rating"].mean().reset_index().sort_values("Decade")
+                decade_imdb["Decade"] = decade_imdb["Decade"].astype(str)
+                decade_imdb = decade_imdb.set_index("Decade")
+                st.line_chart(decade_imdb)
+            else:
+                st.write("No hay datos suficientes de año para calcular décadas.")
         else:
-            st.write("No hay IMDb Rating suficiente.")
-
-    st.markdown("### 🔬 Análisis avanzado (mi nota vs IMDb)")
-    corr_df = df[["Your Rating", "IMDb Rating"]].dropna() if {"Your Rating", "IMDb Rating"}.issubset(df.columns) else pd.DataFrame()
-
-    col_e, col_f = st.columns(2)
-    with col_e:
-        if not corr_df.empty and len(corr_df) > 1:
-            corr = corr_df["Your Rating"].corr(corr_df["IMDb Rating"])
-            st.metric("Correlación Pearson (mi nota vs IMDb)", f"{corr:.2f}")
-        else:
-            st.metric("Correlación Pearson (mi nota vs IMDb)", "N/A")
-        st.write("Valores cercanos a 1 → coincido con IMDb; 0 → independiente; negativos → voy en contra.")
-
-    with col_f:
-        st.markdown("**Dispersión: IMDb vs mi nota**")
-        if not corr_df.empty:
-            chart = (
-                alt.Chart(corr_df.reset_index())
-                .mark_circle(size=60, opacity=0.6)
-                .encode(
-                    x=alt.X("IMDb Rating:Q", scale=alt.Scale(domain=[0,10])),
-                    y=alt.Y("Your Rating:Q", scale=alt.Scale(domain=[0,10])),
-                    tooltip=["IMDb Rating", "Your Rating"]
-                )
-                .properties(height=300)
-            )
-            st.altair_chart(chart, use_container_width=True)
-        else:
-            st.write("No hay suficientes datos para el scatter.")
-
-    # Mapa de calor: mi nota media por género y década
-    st.markdown("**Mapa de calor: mi nota media por género y década**")
-    tmp = df[df["Year"].notna() & df["Your Rating"].notna()].copy()
-    if not tmp.empty and "GenreList" in tmp.columns:
-        tmp["Decade"] = (tmp["Year"] // 10 * 10).astype(int).astype(str)
-        g = tmp.explode("GenreList")
-        g = g[g["GenreList"].notna() & (g["GenreList"] != "")]
-        if not g.empty:
-            heat = g.groupby(["GenreList","Decade"])["Your Rating"].mean().reset_index()
-            heat = heat.rename(columns={"GenreList":"Género","Decade":"Década","Your Rating":"Mi nota media"})
-            st.dataframe(heat, use_container_width=True, hide_index=True)
-        else:
-            st.write("No hay datos suficientes de géneros.")
-    else:
-        st.write("Faltan columnas 'Year' y/o 'Your Rating'.")
+            st.write("No hay IMDb Rating disponible.")

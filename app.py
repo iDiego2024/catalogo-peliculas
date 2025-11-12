@@ -1,22 +1,11 @@
-# --- resolver rutas para imports en Streamlit Cloud / local ---
-import sys, pathlib
-BASE_DIR = pathlib.Path(__file__).resolve().parent
-MODULES_DIR = BASE_DIR / "modules"
-for p in (BASE_DIR, MODULES_DIR):
-    p_str = str(p)
-    if p.exists() and p_str not in sys.path:
-        sys.path.insert(0, p_str)
-# --------------------------------------------------------------
-
+# -*- coding: utf-8 -*-
+import os
+from pathlib import Path
 import streamlit as st
+import pandas as pd
 
-# Importar submódulos (tu código modular ya creado)
-import modules.imdb_catalog as imdb_catalog
-import modules.analytics as analytics
-import modules.afi_list as afi_list
-import modules.oscars_awards as oscars_awards
-
-# Importar utilidades centrales (versión, tema CSS, carga de datos)
+# -------------------- Imports de módulos propios --------------------
+# Nota: utils.py ya fue actualizado para el bug de pandas (Series "truth value")
 from modules.utils import (
     APP_VERSION,
     apply_theme_and_css,
@@ -24,70 +13,142 @@ from modules.utils import (
     load_data,
 )
 
-# ----------------- Configuración general de página -----------------
+# Tabs (algunas instalaciones tienen firmas distintas: df vs df,cfg)
+import modules.imdb_catalog as imdb_catalog
+import modules.analytics as analytics
+import modules.afi_list as afi_list
+import modules.oscars_awards as oscars_awards
+
+# -------------------- Config básica de la app -----------------------
 st.set_page_config(
     page_title="🎬 Mi catálogo de Películas",
-    layout="wide",  # ancho como el original
-    page_icon="🎬",
+    layout="centered"  # el CSS ajusta el ancho en escritorio
 )
 
-# ----------------- Tema y CSS (dorado + ancho + fuentes) ----------
-apply_theme_and_css()  # inyecta el CSS dorado y ensancha contenedor
+apply_theme_and_css()
 
-# ----------------- Encabezado -------------------------------------
-st.title("🎥 Mi catálogo de películas (IMDb)")
-st.caption(f"Versión de la app: **{APP_VERSION}**")
-
-# ----------------- Barra lateral: datos + changelog ----------------
+# -------------------- Sidebar: versión y changelog ------------------
 with st.sidebar:
-    st.header("📂 Datos")
-    uploaded = st.file_uploader(
-        "Sube tu CSV de IMDb (si no, se usa 'peliculas.csv' del repo)",
-        type=["csv"],
-        key="uploader_main",
-    )
+    st.markdown(f"**Versión:** `{APP_VERSION}`")
+    show_changelog_sidebar()
 
-    show_changelog_sidebar()  # panel de versiones / changelog profesional
+# -------------------- Paths y carga de CSV --------------------------
+BASE_DIR = Path(__file__).parent
 
-# ----------------- Carga de datos ---------------------------------
+st.sidebar.header("📂 Datos")
+uploaded = st.sidebar.file_uploader(
+    "Sube tu CSV de IMDb (si no, se usa peliculas.csv del repo)",
+    type=["csv"]
+)
+
 if uploaded is not None:
     df = load_data(uploaded)
 else:
-    try:
-        df = load_data(str(BASE_DIR / "peliculas.csv"))
-    except FileNotFoundError:
+    csv_path = BASE_DIR / "peliculas.csv"
+    if not csv_path.exists():
         st.error(
-            "No se encontró **peliculas.csv** y no subiste archivo.\n\n"
-            "→ Sube tu CSV de IMDb desde la barra lateral para continuar."
+            "No se encontró **peliculas.csv** en el repo y no se subió archivo.\n\n"
+            "👉 Sube tu CSV desde la barra lateral para continuar."
         )
         st.stop()
+    df = load_data(str(csv_path))
 
 if "Title" not in df.columns:
     st.error("El CSV debe contener una columna **Title** para poder funcionar.")
     st.stop()
 
-# ----------------- TABS principales (como tu app original) --------
-tab_catalog, tab_analysis, tab_afi, tab_what = st.tabs(
-    ["🎬 Catálogo", "📊 Análisis", "🏆 Lista AFI", "🎲 ¿Qué ver hoy?"]
+# -------------------- Opciones de UI / funciones extra --------------
+st.title("🎥 Mi catálogo de películas (IMDb)")
+
+# Barra lateral de opciones (se comparte con módulos)
+st.sidebar.header("🖼️ Opciones de visualización")
+show_posters_fav = st.sidebar.checkbox(
+    "Mostrar pósters TMDb en mis favoritas (nota ≥ 9)",
+    value=True,
+    key="opt_show_posters_fav"
 )
 
+st.sidebar.header("🌐 TMDb")
+use_tmdb_gallery = st.sidebar.checkbox(
+    "Usar TMDb en la galería visual",
+    value=True,
+    key="opt_use_tmdb_gallery"
+)
+
+st.sidebar.header("🎬 Tráilers")
+show_trailers = st.sidebar.checkbox(
+    "Mostrar tráiler de YouTube (si hay API key)",
+    value=True,
+    key="opt_show_trailers"
+)
+
+st.sidebar.header("⚙️ Opciones avanzadas")
+show_awards = st.sidebar.checkbox(
+    "Consultar premios en OMDb (puede ser más lento, usa cuota de API)",
+    value=False,
+    key="opt_show_awards"
+)
+
+# Filtros comunes (cada módulo puede leerlos desde cfg si los necesita)
+cfg = {
+    "use_tmdb_gallery": use_tmdb_gallery,
+    "show_posters_fav": show_posters_fav,
+    "show_trailers": show_trailers,
+    "show_awards": show_awards,
+}
+
+# -------------------- Helper para compatibilidad de firmas ----------
+def _call_tab(func, *args, **kwargs):
+    """
+    Llama a una función de render de tab tratando de ser compatible con
+    firmas antiguas y nuevas:
+      - nueva: func(df, cfg=cfg)
+      - vieja: func(df)
+    """
+    try:
+        return func(*args, **kwargs)                      # intento directo (por si ya pasamos cfg)
+    except TypeError:
+        # Reintenta con df solamente (firma antigua)
+        if len(args) >= 1:
+            return func(args[0])
+        else:
+            # Último recurso: sin args (muy raro)
+            return func()
+
+# -------------------- Tabs principales ------------------------------
+tab_catalog, tab_analysis, tab_awards, tab_afi = st.tabs(
+    ["🎬 Catálogo", "📊 Análisis", "🏆 Premios", "🎖 AFI 100"]
+)
+
+# -------------------- TAB: Catálogo ---------------------------------
 with tab_catalog:
-    # Render de la galería/tabla/filtros (tu módulo)
-    imdb_catalog.render_catalog_tab(df)
+    # Intento moderno: df + cfg (si falla, reintenta con df)
+    try:
+        _call_tab(imdb_catalog.render_catalog_tab, df, cfg=cfg)
+    except Exception as e:
+        st.error("Ocurrió un error al renderizar el catálogo.")
+        st.exception(e)
 
+# -------------------- TAB: Análisis ---------------------------------
 with tab_analysis:
-    analytics.render_analysis_tab(df)
+    try:
+        _call_tab(analytics.render_analysis_tab, df, cfg=cfg)
+    except Exception as e:
+        st.error("Ocurrió un error al renderizar el análisis.")
+        st.exception(e)
 
+# -------------------- TAB: Premios (OMDb) ---------------------------
+with tab_awards:
+    try:
+        _call_tab(oscars_awards.render_awards_tab, df, cfg=cfg)
+    except Exception as e:
+        st.error("Ocurrió un error al renderizar la sección de premios.")
+        st.exception(e)
+
+# -------------------- TAB: AFI 100 ----------------------------------
 with tab_afi:
-    afi_list.render_afi_tab(df)
-
-with tab_what:
-    oscars_awards.render_awards_tab(df)
-
-# ----------------- Footer pequeño -----------------
-st.markdown(
-    "<div style='text-align:center;opacity:0.7;margin-top:1.5rem'>"
-    "Hecho con ❤️ y dorado por Streamlit"
-    "</div>",
-    unsafe_allow_html=True,
-)
+    try:
+        _call_tab(afi_list.render_afi_tab, df, cfg=cfg)
+    except Exception as e:
+        st.error("Ocurrió un error al renderizar la lista AFI.")
+        st.exception(e)

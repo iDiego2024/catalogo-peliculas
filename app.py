@@ -58,6 +58,31 @@ if "Title" not in df.columns:
 # -------------------- Opciones de UI / funciones extra --------------
 st.title("🎥 Mi catálogo de películas (IMDb)")
 
+# ---- BAJADA: resumen de filtros activos (pegar justo después del st.title) ----
+def _ss_get(name, default):
+    return st.session_state.get(name, default)
+
+# Detecta rangos si los guardas en session_state; si no, calcula por defecto
+try:
+    min_year = int(float(df["Year"].min())) if "Year" in df.columns and df["Year"].notna().any() else 1900
+    max_year = int(float(df["Year"].max())) if "Year" in df.columns and df["Year"].notna().any() else 2100
+except Exception:
+    min_year, max_year = 1900, 2100
+
+year_range = _ss_get("filter_year_range", (min_year, max_year))
+rating_range = _ss_get("filter_rating_range", (1, 10))
+selected_genres = _ss_get("filter_genres", [])
+selected_directors = _ss_get("filter_directors", [])
+
+st.caption(
+    f"Filtros activos → Años: {year_range[0]}–{year_range[1]} | "
+    f"Mi nota: {rating_range[0]}–{rating_range[1]} | "
+    f"Géneros: {', '.join(selected_genres) if selected_genres else 'Todos'} | "
+    f"Directores: {', '.join(selected_directors) if selected_directors else 'Todos'}"
+)
+# ---- FIN BAJADA ----
+
+
 # Barra lateral de opciones compartidas
 st.sidebar.header("🖼️ Opciones de visualización")
 show_posters_fav = st.sidebar.checkbox(

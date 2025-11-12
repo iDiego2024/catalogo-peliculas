@@ -2,16 +2,13 @@
 import streamlit as st
 import pandas as pd
 import requests
-import random
 import re
-import math
 from urllib.parse import quote_plus
 
-# CSS (dorado + ancho)
 from .styles import GOLDEN_CSS
 
 # --------- Versión de la app ----------
-APP_VERSION = "v2.1.0"
+APP_VERSION = "v2.1.1"
 
 # --------- Config APIs externas --------
 TMDB_API_KEY = st.secrets.get("TMDB_API_KEY", None)
@@ -22,44 +19,140 @@ TMDB_SIMILAR_URL_TEMPLATE = "https://api.themoviedb.org/3/movie/{movie_id}/simil
 YOUTUBE_API_KEY = st.secrets.get("YOUTUBE_API_KEY", None)
 YOUTUBE_SEARCH_URL = "https://www.googleapis.com/youtube/v3/search"
 
+# ----------------- AFI LIST (10th Anniversary) -----------------
+AFI_LIST = [
+    {"Rank": 1, "Title": "Citizen Kane", "Year": 1941},
+    {"Rank": 2, "Title": "The Godfather", "Year": 1972},
+    {"Rank": 3, "Title": "Casablanca", "Year": 1942},
+    {"Rank": 4, "Title": "Raging Bull", "Year": 1980},
+    {"Rank": 5, "Title": "Singin' in the Rain", "Year": 1952},
+    {"Rank": 6, "Title": "Gone with the Wind", "Year": 1939},
+    {"Rank": 7, "Title": "Lawrence of Arabia", "Year": 1962},
+    {"Rank": 8, "Title": "Schindler's List", "Year": 1993},
+    {"Rank": 9, "Title": "Vertigo", "Year": 1958},
+    {"Rank": 10, "Title": "The Wizard of Oz", "Year": 1939},
+    {"Rank": 11, "Title": "City Lights", "Year": 1931},
+    {"Rank": 12, "Title": "The Searchers", "Year": 1956},
+    {"Rank": 13, "Title": "Star Wars", "Year": 1977},
+    {"Rank": 14, "Title": "Psycho", "Year": 1960},
+    {"Rank": 15, "Title": "2001: A Space Odyssey", "Year": 1968},
+    {"Rank": 16, "Title": "Sunset Boulevard", "Year": 1950},
+    {"Rank": 17, "Title": "The Graduate", "Year": 1967},
+    {"Rank": 18, "Title": "The General", "Year": 1926},
+    {"Rank": 19, "Title": "On the Waterfront", "Year": 1954},
+    {"Rank": 20, "Title": "It's a Wonderful Life", "Year": 1946},
+    {"Rank": 21, "Title": "Chinatown", "Year": 1974},
+    {"Rank": 22, "Title": "Some Like It Hot", "Year": 1959},
+    {"Rank": 23, "Title": "The Grapes of Wrath", "Year": 1940},
+    {"Rank": 24, "Title": "E.T. the Extra-Terrestrial", "Year": 1982},
+    {"Rank": 25, "Title": "To Kill a Mockingbird", "Year": 1962},
+    {"Rank": 26, "Title": "Mr. Smith Goes to Washington", "Year": 1939},
+    {"Rank": 27, "Title": "High Noon", "Year": 1952},
+    {"Rank": 28, "Title": "All About Eve", "Year": 1950},
+    {"Rank": 29, "Title": "Double Indemnity", "Year": 1944},
+    {"Rank": 30, "Title": "Apocalypse Now", "Year": 1979},
+    {"Rank": 31, "Title": "The Maltese Falcon", "Year": 1941},
+    {"Rank": 32, "Title": "The Godfather Part II", "Year": 1974},
+    {"Rank": 33, "Title": "One Flew Over the Cuckoo's Nest", "Year": 1975},
+    {"Rank": 34, "Title": "Snow White and the Seven Dwarfs", "Year": 1937},
+    {"Rank": 35, "Title": "Annie Hall", "Year": 1977},
+    {"Rank": 36, "Title": "The Bridge on the River Kwai", "Year": 1957},
+    {"Rank": 37, "Title": "The Best Years of Our Lives", "Year": 1946},
+    {"Rank": 38, "Title": "The Treasure of the Sierra Madre", "Year": 1948},
+    {"Rank": 39, "Title": "Dr. Strangelove", "Year": 1964},
+    {"Rank": 40, "Title": "The Sound of Music", "Year": 1965},
+    {"Rank": 41, "Title": "King Kong", "Year": 1933},
+    {"Rank": 42, "Title": "Bonnie and Clyde", "Year": 1967},
+    {"Rank": 43, "Title": "Midnight Cowboy", "Year": 1969},
+    {"Rank": 44, "Title": "The Philadelphia Story", "Year": 1940},
+    {"Rank": 45, "Title": "Shane", "Year": 1953},
+    {"Rank": 46, "Title": "It Happened One Night", "Year": 1934},
+    {"Rank": 47, "Title": "A Streetcar Named Desire", "Year": 1951},
+    {"Rank": 48, "Title": "Rear Window", "Year": 1954},
+    {"Rank": 49, "Title": "Intolerance", "Year": 1916},
+    {"Rank": 50, "Title": "The Lord of the Rings: The Fellowship of the Ring", "Year": 2001},
+    {"Rank": 51, "Title": "West Side Story", "Year": 1961},
+    {"Rank": 52, "Title": "Taxi Driver", "Year": 1976},
+    {"Rank": 53, "Title": "The Deer Hunter", "Year": 1978},
+    {"Rank": 54, "Title": "M*A*S*H", "Year": 1970},
+    {"Rank": 55, "Title": "North by Northwest", "Year": 1959},
+    {"Rank": 56, "Title": "Jaws", "Year": 1975},
+    {"Rank": 57, "Title": "Rocky", "Year": 1976},
+    {"Rank": 58, "Title": "The Gold Rush", "Year": 1925},
+    {"Rank": 59, "Title": "Nashville", "Year": 1975},
+    {"Rank": 60, "Title": "Duck Soup", "Year": 1933},
+    {"Rank": 61, "Title": "Sullivan's Travels", "Year": 1941},
+    {"Rank": 62, "Title": "American Graffiti", "Year": 1973},
+    {"Rank": 63, "Title": "Cabaret", "Year": 1972},
+    {"Rank": 64, "Title": "Network", "Year": 1976},
+    {"Rank": 65, "Title": "The African Queen", "Year": 1951},
+    {"Rank": 66, "Title": "Raiders of the Lost Ark", "Year": 1981},
+    {"Rank": 67, "Title": "Who's Afraid of Virginia Woolf?", "Year": 1966},
+    {"Rank": 68, "Title": "Unforgiven", "Year": 1992},
+    {"Rank": 69, "Title": "Tootsie", "Year": 1982},
+    {"Rank": 70, "Title": "A Clockwork Orange", "Year": 1971},
+    {"Rank": 71, "Title": "Saving Private Ryan", "Year": 1998},
+    {"Rank": 72, "Title": "The Shawshank Redemption", "Year": 1994},
+    {"Rank": 73, "Title": "Butch Cassidy and the Sundance Kid", "Year": 1969},
+    {"Rank": 74, "Title": "The Silence of the Lambs", "Year": 1991},
+    {"Rank": 75, "Title": "Forrest Gump", "Year": 1994},
+    {"Rank": 76, "Title": "All the President's Men", "Year": 1976},
+    {"Rank": 77, "Title": "Modern Times", "Year": 1936},
+    {"Rank": 78, "Title": "The Wild Bunch", "Year": 1969},
+    {"Rank": 79, "Title": "The Apartment", "Year": 1960},
+    {"Rank": 80, "Title": "Spartacus", "Year": 1960},
+    {"Rank": 81, "Title": "Sunrise: A Song of Two Humans", "Year": 1927},
+    {"Rank": 82, "Title": "Titanic", "Year": 1997},
+    {"Rank": 83, "Title": "Easy Rider", "Year": 1969},
+    {"Rank": 84, "Title": "A Night at the Opera", "Year": 1935},
+    {"Rank": 85, "Title": "Platoon", "Year": 1986},
+    {"Rank": 86, "Title": "12 Angry Men", "Year": 1957},
+    {"Rank": 87, "Title": "Bringing Up Baby", "Year": 1938},
+    {"Rank": 88, "Title": "The Sixth Sense", "Year": 1999},
+    {"Rank": 89, "Title": "Swing Time", "Year": 1936},
+    {"Rank": 90, "Title": "Sophie's Choice", "Year": 1982},
+    {"Rank": 91, "Title": "Tootsie", "Year": 1982},
+    {"Rank": 92, "Title": "Goodfellas", "Year": 1990},
+    {"Rank": 93, "Title": "The French Connection", "Year": 1971},
+    {"Rank": 94, "Title": "Pulp Fiction", "Year": 1994},
+    {"Rank": 95, "Title": "The Last Picture Show", "Year": 1971},
+    {"Rank": 96, "Title": "Do the Right Thing", "Year": 1989},
+    {"Rank": 97, "Title": "Blade Runner", "Year": 1982},
+    {"Rank": 98, "Title": "Yankee Doodle Dandy", "Year": 1942},
+    {"Rank": 99, "Title": "Toy Story", "Year": 1995},
+    {"Rank": 100, "Title": "Ben-Hur", "Year": 1959},
+]
+
 # ==================== ESTILO / SIDEBAR ====================
 
 def apply_theme_and_css():
-    """Aplica el CSS dorado ancho + tipografías. (Look & feel del original)"""
     st.markdown(GOLDEN_CSS, unsafe_allow_html=True)
 
 def show_changelog_sidebar():
-    """Bloque de changelog/versión con un look más profesional."""
     with st.expander("📌 Información & cambios", expanded=False):
         st.write(
             f"- **Versión:** {APP_VERSION}\n"
-            "- **Novedades UX:** tema dorado, grid más ancho, tarjetas pulidas.\n"
-            "- **Arquitectura:** módulos separados (`modules/`).\n"
-            "- **Rendimiento:** cache para TMDb/OMDb/YouTube."
+            "- **UX:** tema dorado + grid ancho + tarjetas pulidas.\n"
+            "- **Arquitectura:** módulos separados (`modules/`)."
         )
-        st.caption("Sugerencias de mejoras visuales: tipografías, microanimaciones y hover en tarjetas ya incluidos.")
+        st.caption("Cache en TMDb/OMDb/YouTube para mejor rendimiento.")
 
 # ==================== CARGA DE DATOS ======================
 
 @st.cache_data
 def load_data(file_path_or_buffer):
-    """Carga CSV de IMDb y normaliza columnas usadas por toda la app."""
     df = pd.read_csv(file_path_or_buffer)
 
-    # Columnas esperadas/normalización
     df["Your Rating"] = pd.to_numeric(df.get("Your Rating"), errors="coerce")
     df["IMDb Rating"] = pd.to_numeric(df.get("IMDb Rating"), errors="coerce")
 
     if "Year" in df.columns:
-        df["Year"] = (
-            df["Year"].astype(str).str.extract(r"(\d{4})")[0].astype(float)
-        )
+        df["Year"] = df["Year"].astype(str).str.extract(r"(\d{4})")[0].astype(float)
     else:
         df["Year"] = None
 
     df["Genres"] = (df.get("Genres") or "").fillna("")
     df["Directors"] = (df.get("Directors") or "").fillna("")
-
     df["GenreList"] = df["Genres"].apply(
         lambda x: [] if pd.isna(x) or x == "" else str(x).split(", ")
     )
@@ -67,20 +160,17 @@ def load_data(file_path_or_buffer):
     if "Date Rated" in df.columns:
         df["Date Rated"] = pd.to_datetime(df["Date Rated"], errors="coerce").dt.date
 
-    # Texto de búsqueda precomputado (para filtros rápidos de tus módulos)
     search_cols = [c for c in ["Title", "Original Title", "Directors", "Genres", "Year", "Your Rating", "IMDb Rating"] if c in df.columns]
     df["SearchText"] = (
         df[search_cols].astype(str).apply(lambda row: " ".join(row), axis=1).str.lower()
         if search_cols else ""
     )
 
-    # Auxiliares usados en la lista AFI
     df["NormTitle"] = df["Title"].apply(normalize_title) if "Title" in df else ""
     df["YearInt"] = df["Year"].fillna(-1).astype(int) if "Year" in df else -1
-
     return df
 
-# ================== HELPERS DE FORMATO ====================
+# ================== HELPERS ==============================
 
 def normalize_title(s: str) -> str:
     return re.sub(r"[^a-z0-9]+", "", str(s).lower())
@@ -95,25 +185,18 @@ def fmt_rating(v):
     except Exception: return str(v)
 
 def get_rating_colors(rating):
-    """Devuelve (border_color, glow_color) según rating."""
     try:
         r = float(rating)
     except Exception:
         return ("rgba(148,163,184,0.8)", "rgba(15,23,42,0.0)")
-    if r >= 9:
-        return ("#22c55e", "rgba(34,197,94,0.55)")
-    elif r >= 8:
-        return ("#0ea5e9", "rgba(14,165,233,0.55)")
-    elif r >= 7:
-        return ("#a855f7", "rgba(168,85,247,0.50)")
-    elif r >= 6:
-        return ("#eab308", "rgba(234,179,8,0.45)")
-    else:
-        return ("#f97316", "rgba(249,115,22,0.45)")
+    if r >= 9:   return ("#22c55e", "rgba(34,197,94,0.55)")
+    if r >= 8:   return ("#0ea5e9", "rgba(14,165,233,0.55)")
+    if r >= 7:   return ("#a855f7", "rgba(168,85,247,0.50)")
+    if r >= 6:   return ("#eab308", "rgba(234,179,8,0.45)")
+    return ("#f97316", "rgba(249,115,22,0.45)")
 
 def get_spanish_review_link(title, year=None):
-    if not title or pd.isna(title):
-        return None
+    if not title or pd.isna(title): return None
     q = f"reseña película {title}"
     try:
         if year is not None and not pd.isna(year):
@@ -131,9 +214,7 @@ def _coerce_year_for_tmdb(year):
 
 @st.cache_data
 def get_tmdb_basic_info(title, year=None):
-    """Devuelve {'id','poster_url','vote_average'} de TMDb para un título."""
-    if TMDB_API_KEY is None or not title or pd.isna(title):
-        return None
+    if TMDB_API_KEY is None or not title or pd.isna(title): return None
     params = {"api_key": TMDB_API_KEY, "query": str(title).strip()}
     y = _coerce_year_for_tmdb(year)
     if y is not None: params["year"] = y
@@ -153,8 +234,7 @@ def get_tmdb_basic_info(title, year=None):
 
 @st.cache_data
 def get_tmdb_providers(tmdb_id, country="CL"):
-    if TMDB_API_KEY is None or not tmdb_id:
-        return None
+    if TMDB_API_KEY is None or not tmdb_id: return None
     try:
         url = f"https://api.themoviedb.org/3/movie/{tmdb_id}/watch/providers"
         r = requests.get(url, params={"api_key": TMDB_API_KEY}, timeout=4)
@@ -172,18 +252,14 @@ def get_tmdb_providers(tmdb_id, country="CL"):
 
 @st.cache_data
 def get_youtube_trailer_url(title, year=None):
-    if YOUTUBE_API_KEY is None or not title or pd.isna(title):
-        return None
+    if YOUTUBE_API_KEY is None or not title or pd.isna(title): return None
     q = f"{title} trailer"
     try:
-        if year is not None and not pd.isna(year):
-            q += f" {int(float(year))}"
+        if year is not None and not pd.isna(year): q += f" {int(float(year))}"
     except Exception:
         pass
-    params = {
-        "key": YOUTUBE_API_KEY, "part": "snippet", "q": q,
-        "type": "video", "maxResults": 1, "videoEmbeddable": "true", "regionCode": "CL",
-    }
+    params = {"key": YOUTUBE_API_KEY, "part": "snippet", "q": q,
+              "type": "video", "maxResults": 1, "videoEmbeddable": "true", "regionCode": "CL"}
     try:
         r = requests.get(YOUTUBE_SEARCH_URL, params=params, timeout=5)
         if r.status_code != 200: return None
@@ -196,11 +272,9 @@ def get_youtube_trailer_url(title, year=None):
 
 @st.cache_data
 def get_omdb_awards(title, year=None):
-    """Devuelve dict con resumen de premios (u {'error': ...})."""
     api_key = st.secrets.get("OMDB_API_KEY", None)
     if api_key is None: return {"error": "OMDB_API_KEY no está configurada en st.secrets."}
     if not title or pd.isna(title): return {"error": "Título vacío o inválido."}
-
     base_url = "https://www.omdbapi.com/"
     raw_title = str(title).strip()
     simple_title = re.sub(r"\s*\(.*?\)\s*$", "", raw_title).strip()
@@ -221,7 +295,6 @@ def get_omdb_awards(title, year=None):
         except Exception as e:
             return {"error": f"Excepción OMDb: {e}"}
 
-    # Búsqueda directa por título (dos variaciones) y, si no, por búsqueda/ID
     data, last_error = None, None
     for t in [raw_title, simple_title]:
         params = {"apikey": api_key, "type": "movie", "t": t}
@@ -281,68 +354,3 @@ def get_omdb_awards(title, year=None):
         "palme_dor": palme_dor, "oscars_nominated": oscars_nominated,
         "total_wins": total_wins, "total_nominations": total_nominations,
     }
-
-# ================== RECOMENDACIONES =======================
-
-def recommend_from_catalog(df_all, seed_row, top_n=5):
-    """Recomendaciones simples por géneros/directores/año/notas dentro del catálogo."""
-    if df_all.empty: return pd.DataFrame()
-    candidates = df_all.copy()
-    if "Title" in candidates.columns and "Year" in candidates.columns:
-        candidates = candidates[~((candidates["Title"] == seed_row.get("Title")) &
-                                  (candidates["Year"] == seed_row.get("Year")))]
-    seed_genres = set(seed_row.get("GenreList") or [])
-    seed_dirs = {d.strip() for d in str(seed_row.get("Directors") or "").split(",") if d.strip()}
-    seed_year = seed_row.get("Year")
-    seed_rating = seed_row.get("Your Rating")
-
-    scores=[]
-    for idx, r in candidates.iterrows():
-        g2=set(r.get("GenreList") or [])
-        d2={d.strip() for d in str(r.get("Directors") or "").split(",") if d.strip()}
-        score=0.0
-        score += 2.0*len(seed_genres & g2)
-        if seed_dirs & d2: score += 3.0
-        y2=r.get("Year")
-        if pd.notna(seed_year) and pd.notna(y2):
-            score -= min(abs(seed_year - y2)/10.0, 3.0)
-        r2=r.get("Your Rating")
-        if pd.notna(seed_rating) and pd.notna(r2):
-            score -= abs(seed_rating - r2)*0.3
-        imdb_r2=r.get("IMDb Rating")
-        if pd.notna(imdb_r2):
-            score += (float(imdb_r2) - 6.5)*0.2
-        scores.append((idx, score))
-    if not scores: return pd.DataFrame()
-    scores_sorted=sorted(scores, key=lambda x: x[1], reverse=True)
-    top_indices=[idx for idx, sc in scores_sorted[:top_n] if sc>0]
-    if not top_indices: return pd.DataFrame()
-    recs=df_all.loc[top_indices].copy()
-    score_map=dict(scores)
-    recs["similarity_score"]=recs.index.map(score_map.get)
-    return recs
-
-# ================== UTILIDADES VARIAS =====================
-
-@st.cache_data
-def compute_awards_table(df_basic):
-    """Construye tabla de premios vía OMDb para subconjunto de películas."""
-    rows=[]
-    for _, r in df_basic.iterrows():
-        title=r.get("Title"); year=r.get("Year")
-        awards=get_omdb_awards(title, year)
-        if not isinstance(awards, dict) or "error" in awards: continue
-        rows.append({
-            "Title": title, "Year": year,
-            "oscars": awards.get("oscars",0),
-            "oscars_nominated": awards.get("oscars_nominated",0),
-            "total_wins": awards.get("total_wins",0),
-            "total_nominations": awards.get("total_nominations",0),
-            "palme_dor": awards.get("palme_dor",False),
-            "raw": awards.get("raw"),
-        })
-    if not rows:
-        return pd.DataFrame(columns=[
-            "Title","Year","oscars","oscars_nominated","total_wins","total_nominations","palme_dor","raw"
-        ])
-    return pd.DataFrame(rows)

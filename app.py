@@ -1,10 +1,10 @@
-# app.py — v1.2.1
-# Diego Leal · Catálogo de Películas (versión modular restaurada)
+# app.py — v1.2.2
+# Diego Leal · Catálogo de Películas (modular, con barra lateral y corrección de columnas)
 
 import streamlit as st
 import pandas as pd
 
-APP_VERSION = "1.2.1"
+APP_VERSION = "1.2.2"
 
 # ================== CONFIGURACIÓN VISUAL ==================
 st.set_page_config(
@@ -49,7 +49,7 @@ st.title("🎥 Mi catálogo de películas (IMDb)")
 try:
     from modules import imdb_catalog, analytics, oscars_awards
 except Exception as e:
-    st.error("❌ No se pudieron importar los módulos. Verifica la carpeta `modules/`.")
+    st.error("❌ No se pudieron importar los módulos. Verifica la carpeta `modules/` y los nombres de archivo.")
     st.exception(e)
     st.stop()
 
@@ -58,18 +58,42 @@ st.sidebar.header("📂 Cargar datos")
 
 uploaded_file = st.sidebar.file_uploader("Sube tu archivo CSV (o usa el de ejemplo)", type=["csv"])
 
-# Cargar datos base
 def load_data(file):
+    """Carga el CSV y adapta nombres de columnas a las que usan los módulos."""
     if file is not None:
-        return pd.read_csv(file)
+        df = pd.read_csv(file)
     else:
-        return pd.read_csv("data/peliculas.csv")
+        df = pd.read_csv("data/peliculas.csv")
+
+    # Limpieza básica de nombres
+    df.columns = [c.strip() for c in df.columns]
+
+    # Normalización de columnas de género
+    rename_map = {
+        "Genre": "GenreList",
+        "Genres": "GenreList",
+        "genre": "GenreList",
+        "genres": "GenreList"
+    }
+    df = df.rename(columns={k: v for k, v in rename_map.items() if k in df.columns})
+
+    # Si existe columna GenreList, convertir en listas
+    if "GenreList" in df.columns and df["GenreList"].dtype == object:
+        df["GenreList"] = df["GenreList"].apply(
+            lambda x: [g.strip() for g in str(x).split(",")] if pd.notna(x) else []
+        )
+
+    # Normalizar otras columnas opcionales usadas en los módulos
+    for col in ["Year", "Rating", "Title"]:
+        if col not in df.columns:
+            df[col] = None
+
+    return df
 
 df = load_data(uploaded_file)
-
 st.sidebar.markdown(f"**Películas cargadas:** {len(df):,}")
 
-# ================== TABS PRINCIPALES ==================
+# ================== PESTAÑAS PRINCIPALES ==================
 tab1, tab2, tab3 = st.tabs(["🎬 Catálogo", "📊 Análisis", "🏆 Premios Óscar"])
 
 with tab1:

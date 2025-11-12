@@ -1,9 +1,10 @@
-# app.py — v1.2.0
-# Diego Leal · Catálogo de Películas (versión modular con tema original)
+# app.py — v1.2.1
+# Diego Leal · Catálogo de Películas (versión modular restaurada)
 
 import streamlit as st
+import pandas as pd
 
-APP_VERSION = "1.2.0"
+APP_VERSION = "1.2.1"
 
 # ================== CONFIGURACIÓN VISUAL ==================
 st.set_page_config(
@@ -12,7 +13,7 @@ st.set_page_config(
     layout="wide",
 )
 
-# ---- Tema oscuro y estilos idénticos al original ----
+# ---- Tema oscuro y estilos (idéntico al original) ----
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800&display=swap');
@@ -47,24 +48,38 @@ st.title("🎥 Mi catálogo de películas (IMDb)")
 # ================== IMPORTACIÓN DE MÓDULOS ==================
 try:
     from modules import imdb_catalog, analytics, oscars_awards
-    MODULE_MODE = "modular"
 except Exception as e:
-    MODULE_MODE = None
-    st.error("No se pudieron importar los módulos. Revisa que la carpeta `modules/` exista y los nombres coincidan.")
+    st.error("❌ No se pudieron importar los módulos. Verifica la carpeta `modules/`.")
     st.exception(e)
+    st.stop()
 
-# ================== CONTENIDO PRINCIPAL ==================
-if MODULE_MODE == "modular":
-    tab1, tab2, tab3 = st.tabs(["🎬 Catálogo", "📊 Análisis", "🏆 Premios Óscar"])
+# ================== SIDEBAR: CARGA DE DATOS ==================
+st.sidebar.header("📂 Cargar datos")
 
-    with tab1:
-        imdb_catalog.render_catalog_tab()
+uploaded_file = st.sidebar.file_uploader("Sube tu archivo CSV (o usa el de ejemplo)", type=["csv"])
 
-    with tab2:
-        analytics.render_analysis_tab()
+# Cargar datos base
+def load_data(file):
+    if file is not None:
+        return pd.read_csv(file)
+    else:
+        return pd.read_csv("data/peliculas.csv")
 
-    with tab3:
-        oscars_awards.render_oscars_tab()
+df = load_data(uploaded_file)
+
+st.sidebar.markdown(f"**Películas cargadas:** {len(df):,}")
+
+# ================== TABS PRINCIPALES ==================
+tab1, tab2, tab3 = st.tabs(["🎬 Catálogo", "📊 Análisis", "🏆 Premios Óscar"])
+
+with tab1:
+    imdb_catalog.render_catalog_tab(df)
+
+with tab2:
+    analytics.render_analysis_tab(df)
+
+with tab3:
+    oscars_awards.render_oscars_tab(df)
 
 # ================== FOOTER ==================
 st.markdown(

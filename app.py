@@ -1,3 +1,15 @@
+# --- asegurar resolución de rutas ---
+import sys, pathlib
+BASE_DIR = pathlib.Path(__file__).resolve().parent
+MODULES_DIR = BASE_DIR / "modules"
+for p in (BASE_DIR, MODULES_DIR):
+    p_str = str(p)
+    if p.exists() and p_str not in sys.path:
+        sys.path.insert(0, p_str)
+# ------------------------------------
+
+
+
 # --- bootstrapping de rutas para asegurar que 'modules' se resuelva ---
 import sys, pathlib
 BASE_DIR = pathlib.Path(__file__).resolve().parent
@@ -8,6 +20,15 @@ for p in (BASE_DIR, MODULES_DIR):
     if p.exists() and p_str not in sys.path:
         sys.path.insert(0, p_str)
 # ----------------------------------------------------------------------
+
+import modules.imdb_catalog as imdb_catalog
+import modules.analytics as analytics
+import modules.afi_list as afi_list
+import modules.oscars_awards as oscars_awards
+
+from modules.utils import (
+    APP_VERSION, apply_theme_and_css, show_changelog_sidebar, load_data
+)
 
 import streamlit as st  # ahora sí, tras asegurar rutas
 import pandas as pd

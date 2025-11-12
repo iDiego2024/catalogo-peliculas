@@ -1,4 +1,15 @@
-import streamlit as st
+# --- bootstrapping de rutas para asegurar que 'modules' se resuelva ---
+import sys, pathlib
+BASE_DIR = pathlib.Path(__file__).resolve().parent
+MODULES_DIR = BASE_DIR / "modules"
+# Garantiza que la raíz y 'modules/' estén en sys.path
+for p in (BASE_DIR, MODULES_DIR):
+    p_str = str(p)
+    if p.exists() and p_str not in sys.path:
+        sys.path.insert(0, p_str)
+# ----------------------------------------------------------------------
+
+import streamlit as st  # ahora sí, tras asegurar rutas
 import pandas as pd
 
 from modules.utils import (

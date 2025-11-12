@@ -58,7 +58,7 @@ def inject_theme_css():
             }}
         }}
 
-        /* Sidebar sobria, sin iconos llamativos */
+        /* Sidebar */
         [data-testid="stSidebar"] > div:first-child {{
             background: linear-gradient(180deg, rgba(15,23,42,0.98), rgba(15,23,42,0.90));
             border-right: 1px solid rgba(148,163,184,0.25);
@@ -163,7 +163,7 @@ def inject_theme_css():
             transition: background-color 0.15s ease-out;
         }}
 
-        /* Tarjetas de película + galería (grid 2:3) */
+        /* Tarjetas + galería 2:3 */
         .movie-card {{
             background: radial-gradient(circle at top left, rgba(15,23,42,0.9), rgba(15,23,42,0.85));
             border-radius: var(--radius-lg);
@@ -183,12 +183,8 @@ def inject_theme_css():
             border-color: #facc15 !important;
         }}
         .movie-title {{
-            font-weight: 600;
-            letter-spacing: 0.04em;
-            text-transform: uppercase;
-            font-size: 0.86rem;
-            margin-bottom: 2px;
-            color: #f9fafb;
+            font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
+            font-size: 0.86rem; margin-bottom: 2px; color: #f9fafb;
         }}
         .movie-sub {{ font-size: 0.78rem; line-height: 1.35; color: #cbd5f5; }}
 
@@ -229,9 +225,7 @@ def inject_theme_css():
             position: relative;
         }}
         .film-reel-text {{
-            font-size: 0.78rem;
-            text-transform: uppercase;
-            letter-spacing: 0.16em;
+            font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.16em;
             color: #e5e7eb; opacity: 0.95;
         }}
         </style>

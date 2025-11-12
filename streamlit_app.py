@@ -1,11 +1,12 @@
 import streamlit as st
 import pandas as pd
-import requests
 import random
 import altair as alt
 import re
 import math
+import unicodedata
 from urllib.parse import quote_plus
+import requests
 
 # ----------------- Configuración general -----------------
 
@@ -21,11 +22,13 @@ st.title("🎥 Mi catálogo de películas (IMDb)")
 TMDB_API_KEY = st.secrets.get("TMDB_API_KEY", None)
 TMDB_SEARCH_URL = "https://api.themoviedb.org/3/search/movie"
 TMDB_IMAGE_BASE = "https://image.tmdb.org/t/p/w342"
-
 TMDB_SIMILAR_URL_TEMPLATE = "https://api.themoviedb.org/3/movie/{movie_id}/similar"
 
 YOUTUBE_API_KEY = st.secrets.get("YOUTUBE_API_KEY", None)
 YOUTUBE_SEARCH_URL = "https://www.googleapis.com/youtube/v3/search"
+
+# Reutilizamos una sesión HTTP para mejorar performance
+_http = requests.Session()
 
 # ----------------- Lista AFI 100 Years...100 Movies (10th Anniversary Edition) -----------------
 
@@ -120,7 +123,8 @@ AFI_LIST = [
     {"Rank": 88, "Title": "The Sixth Sense", "Year": 1999},
     {"Rank": 89, "Title": "Swing Time", "Year": 1936},
     {"Rank": 90, "Title": "Sophie's Choice", "Year": 1982},
-    {"Rank": 91, "Title": "Tootsie", "Year": 1982},
+    # 91 estaba duplicado "Tootsie". Corregimos al título correcto de la edición 2007:
+    {"Rank": 91, "Title": "A Place in the Sun", "Year": 1951},
     {"Rank": 92, "Title": "Goodfellas", "Year": 1990},
     {"Rank": 93, "Title": "The French Connection", "Year": 1971},
     {"Rank": 94, "Title": "Pulp Fiction", "Year": 1994},
@@ -132,14 +136,13 @@ AFI_LIST = [
     {"Rank": 100, "Title": "Ben-Hur", "Year": 1959},
 ]
 
-
 def normalize_title(s: str) -> str:
-    """Normaliza un título para compararlo (minúsculas, sin espacios ni signos)."""
-    return re.sub(r"[^a-z0-9]+", "", str(s).lower())
-
+    """Normaliza un título (minúsculas, sin tildes/ñ, sin espacios ni signos)."""
+    s = str(s).lower()
+    s = unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode("ascii")
+    return re.sub(r"[^a-z0-9]+", "", s)
 
 # ----------------- Funciones auxiliares -----------------
-
 
 @st.cache_data
 def load_data(file_path_or_buffer):
@@ -197,7 +200,6 @@ def load_data(file_path_or_buffer):
 
     return df
 
-
 def _coerce_year_for_tmdb(year):
     if year is None or pd.isna(year):
         return None
@@ -206,8 +208,7 @@ def _coerce_year_for_tmdb(year):
     except Exception:
         return None
 
-
-@st.cache_data
+@st.cache_data(ttl=86400, show_spinner=False)
 def get_tmdb_basic_info(title, year=None):
     """
     Devuelve info básica TMDb en una sola búsqueda:
@@ -228,7 +229,7 @@ def get_tmdb_basic_info(title, year=None):
         params["year"] = year_int
 
     try:
-        r = requests.get(TMDB_SEARCH_URL, params=params, timeout=3)
+        r = _http.get(TMDB_SEARCH_URL, params=params, timeout=4)
         if r.status_code != 200:
             return None
         data = r.json()
@@ -249,8 +250,7 @@ def get_tmdb_basic_info(title, year=None):
     except Exception:
         return None
 
-
-@st.cache_data
+@st.cache_data(ttl=86400, show_spinner=False)
 def get_tmdb_providers(tmdb_id, country="CL"):
     """
     Streaming desde TMDb watch/providers para un país (por id de TMDb).
@@ -260,7 +260,7 @@ def get_tmdb_providers(tmdb_id, country="CL"):
 
     try:
         providers_url = f"https://api.themoviedb.org/3/movie/{tmdb_id}/watch/providers"
-        r2 = requests.get(providers_url, params={"api_key": TMDB_API_KEY}, timeout=4)
+        r2 = _http.get(providers_url, params={"api_key": TMDB_API_KEY}, timeout=5)
         if r2.status_code != 200:
             return None
         pdata = r2.json()
@@ -284,8 +284,7 @@ def get_tmdb_providers(tmdb_id, country="CL"):
     except Exception:
         return None
 
-
-@st.cache_data
+@st.cache_data(ttl=86400, show_spinner=False)
 def get_tmdb_similar_movies(tmdb_id, language="es-ES", max_results=10):
     """
     Devuelve una lista de películas similares según TMDb para un id dado.
@@ -297,7 +296,7 @@ def get_tmdb_similar_movies(tmdb_id, language="es-ES", max_results=10):
     try:
         url = TMDB_SIMILAR_URL_TEMPLATE.format(movie_id=tmdb_id)
         params = {"api_key": TMDB_API_KEY, "language": language, "page": 1}
-        r = requests.get(url, params=params, timeout=4)
+        r = _http.get(url, params=params, timeout=5)
         if r.status_code != 200:
             return []
         data = r.json()
@@ -323,8 +322,7 @@ def get_tmdb_similar_movies(tmdb_id, language="es-ES", max_results=10):
     except Exception:
         return []
 
-
-@st.cache_data
+@st.cache_data(ttl=86400, show_spinner=False)
 def get_youtube_trailer_url(title, year=None, language_hint="es"):
     """
     Devuelve la URL de YouTube del primer resultado tipo tráiler para ese título.
@@ -335,7 +333,7 @@ def get_youtube_trailer_url(title, year=None, language_hint="es"):
     if not title or pd.isna(title):
         return None
 
-    q = f"{title} trailer"
+    q = f"{title} official trailer"
     try:
         if year is not None and not pd.isna(year):
             q += f" {int(float(year))}"
@@ -350,10 +348,11 @@ def get_youtube_trailer_url(title, year=None, language_hint="es"):
         "maxResults": 1,
         "videoEmbeddable": "true",
         "regionCode": "CL",
+        "order": "relevance",
     }
 
     try:
-        r = requests.get(YOUTUBE_SEARCH_URL, params=params, timeout=5)
+        r = _http.get(YOUTUBE_SEARCH_URL, params=params, timeout=6)
         if r.status_code != 200:
             return None
         data = r.json()
@@ -365,8 +364,7 @@ def get_youtube_trailer_url(title, year=None, language_hint="es"):
     except Exception:
         return None
 
-
-@st.cache_data
+@st.cache_data(ttl=86400, show_spinner=False)
 def get_omdb_awards(title, year=None):
     """
     Info de premios desde OMDb.
@@ -390,7 +388,7 @@ def get_omdb_awards(title, year=None):
 
     def _query(params):
         try:
-            r = requests.get(base_url, params=params, timeout=8)
+            r = _http.get(base_url, params=params, timeout=8)
             if r.status_code != 200:
                 return {"error": f"HTTP {r.status_code} desde OMDb."}
             data = r.json()
@@ -461,15 +459,11 @@ def get_omdb_awards(title, year=None):
     total_wins = 0
     total_nominations = 0
 
-    m_osc = re.search(r"won\s+(\d+)\s+oscars?", text_lower)
-    if not m_osc:
-        m_osc = re.search(r"won\s+(\d+)\s+oscar\b", text_lower)
+    m_osc = re.search(r"won\s+(\d+)\s+oscars?", text_lower) or re.search(r"won\s+(\d+)\s+oscar\b", text_lower)
     if m_osc:
         oscars = int(m_osc.group(1))
 
-    m_osc_nom = re.search(r"nominated\s+for\s+(\d+)\s+oscars?", text_lower)
-    if not m_osc_nom:
-        m_osc_nom = re.search(r"nominated\s+for\s+(\d+)\s+oscar\b", text_lower)
+    m_osc_nom = re.search(r"nominated\s+for\s+(\d+)\s+oscars?", text_lower) or re.search(r"nominated\s+for\s+(\d+)\s+oscar\b", text_lower)
     if m_osc_nom:
         oscars_nominated = int(m_osc_nom.group(1))
 
@@ -489,9 +483,7 @@ def get_omdb_awards(title, year=None):
     elif "bafta" in text_lower:
         baftas = 1
 
-    m_globe = re.search(r"won\s+(\d+)[^\.]*golden\s+globes?", text_lower)
-    if not m_globe:
-        m_globe = re.search(r"won\s+(\d+)[^\.]*golden\s+globe\b", text_lower)
+    m_globe = re.search(r"won\s+(\d+)[^\.]*golden\s+globes?", text_lower) or re.search(r"won\s+(\d+)[^\.]*golden\s+globe\b", text_lower)
     if m_globe:
         golden_globes = int(m_globe.group(1))
     elif "golden globe" in text_lower:
@@ -500,13 +492,21 @@ def get_omdb_awards(title, year=None):
     if re.search(r"palme\s+d['’]or", text_lower):
         palme_dor = True
 
-    m_wins = re.search(r"(\d+)\s+wins?", text_lower)
+    m_wins = re.search(r"(\d+)\s+wins?", awards_str, re.I)
     if m_wins:
         total_wins = int(m_wins.group(1))
 
-    m_noms = re.search(r"(\d+)\s+nominations?", text_lower)
+    m_noms = re.search(r"(\d+)\s+nominations?", awards_str, re.I)
     if m_noms:
         total_nominations = int(m_noms.group(1))
+
+    # Fallbacks por si quedaron en 0
+    if not total_wins:
+        m = re.search(r'(\d+)\s+wins?', awards_str, re.I)
+        if m: total_wins = int(m.group(1))
+    if not total_nominations:
+        m = re.search(r'(\d+)\s+nominations?', awards_str, re.I)
+        if m: total_nominations = int(m.group(1))
 
     return {
         "raw": awards_str,
@@ -519,7 +519,6 @@ def get_omdb_awards(title, year=None):
         "total_wins": total_wins,
         "total_nominations": total_nominations,
     }
-
 
 def compute_awards_table(df_basic):
     """
@@ -553,7 +552,6 @@ def compute_awards_table(df_basic):
         )
     return pd.DataFrame(rows)
 
-
 def get_rating_colors(rating):
     try:
         r = float(rating)
@@ -571,7 +569,6 @@ def get_rating_colors(rating):
     else:
         return ("#f97316", "rgba(249,115,22,0.45)")
 
-
 def get_spanish_review_link(title, year=None):
     if not title or pd.isna(title):
         return None
@@ -582,7 +579,6 @@ def get_spanish_review_link(title, year=None):
     except Exception:
         pass
     return "https://www.google.com/search?q=" + quote_plus(q)
-
 
 def recommend_from_catalog(df_all, seed_row, top_n=5):
     """
@@ -619,10 +615,11 @@ def recommend_from_catalog(df_all, seed_row, top_n=5):
         if seed_dirs & d2:
             score += 3.0
 
-        # cercanía en año
+        # cercanía en año (suavizada)
         y2 = r.get("Year")
         if pd.notna(seed_year) and pd.notna(y2):
-            score -= min(abs(seed_year - y2) / 10.0, 3.0)
+            gap = abs(seed_year - y2)
+            score -= min(math.log1p(gap) / 2.0, 3.0)
 
         # similitud de tu nota
         r2 = r.get("Your Rating")
@@ -649,7 +646,6 @@ def recommend_from_catalog(df_all, seed_row, top_n=5):
     score_map = dict(scores)
     recs["similarity_score"] = recs.index.map(score_map.get)
     return recs
-
 
 # ----------------- Carga de datos -----------------
 
@@ -708,6 +704,7 @@ st.markdown(
         --accent-alt: {accent_alt};
         --radius-lg: 14px;
         --radius-xl: 18px;
+        --rating9:#22c55e; --rating8:#0ea5e9; --rating7:#a855f7; --rating6:#eab308; --rating0:#f97316;
     }}
 
     html, body, .stApp {{
@@ -1098,21 +1095,18 @@ st.caption(
 
 # ----------------- Helpers de formato -----------------
 
-
 def fmt_year(y):
     if pd.isna(y):
         return ""
     return f"{int(float(y))}"
 
-
-def fmt_rating(v):
+def fmt_rating(v, dash=True):
     if pd.isna(v):
-        return ""
+        return "—" if dash else ""
     try:
         return f"{float(v):.1f}"
     except Exception:
         return str(v)
-
 
 # ----------------- BÚSQUEDA ÚNICA -----------------
 
@@ -1124,7 +1118,6 @@ search_query = st.text_input(
     key="busqueda_unica"
 )
 
-
 def apply_search(df_in, query):
     if not query:
         return df_in
@@ -1133,7 +1126,6 @@ def apply_search(df_in, query):
         return df_in
     # Usamos regex=False para que el texto se interprete literalmente
     return df_in[df_in["SearchText"].str.contains(q, na=False, regex=False)]
-
 
 filtered_view = apply_search(filtered.copy(), search_query)
 
@@ -1273,9 +1265,28 @@ with tab_catalog:
         end_idx = start_idx + page_size
         page_df = filtered_view.iloc[start_idx:end_idx].copy()
 
+        # ---------- PREFETCH y uso cacheado de TMDb (id, póster, rating) y providers ----------
+        # Solo hacemos consultas para la página visible
+        if use_tmdb_gallery:
+            tmdb_infos = []
+            providers_infos = []
+            for _, row in page_df.iterrows():
+                ti = get_tmdb_basic_info(row.get("Title"), row.get("Year"))
+                tmdb_infos.append(ti)
+                if ti and ti.get("id"):
+                    pr = get_tmdb_providers(ti["id"], country="CL")
+                else:
+                    pr = None
+                providers_infos.append(pr)
+            page_df["_tmdb_info"] = tmdb_infos
+            page_df["_providers"] = providers_infos
+        else:
+            page_df["_tmdb_info"] = [None] * len(page_df)
+            page_df["_providers"] = [None] * len(page_df)
+
         cards_html = ['<div class="movie-gallery-grid">']
 
-        for _, row in page_df.iterrows():
+        for i, (_, row) in enumerate(page_df.iterrows()):
             titulo = row.get("Title", "Sin título")
             year = row.get("Year", "")
             nota = row.get("Your Rating", "")
@@ -1287,19 +1298,12 @@ with tab_catalog:
             base_rating = nota if pd.notna(nota) else imdb_rating
             border_color, glow_color = get_rating_colors(base_rating)
 
-            if use_tmdb_gallery:
-                tmdb_info = get_tmdb_basic_info(titulo, year)
-                if tmdb_info:
-                    poster_url = tmdb_info.get("poster_url")
-                    tmdb_rating = tmdb_info.get("vote_average")
-                    tmdb_id = tmdb_info.get("id")
-                    availability = get_tmdb_providers(tmdb_id, country="CL")
-                else:
-                    poster_url = None
-                    tmdb_rating = None
-                    availability = None
+            tmdb_info = row.get("_tmdb_info")
+            if use_tmdb_gallery and tmdb_info:
+                poster_url = tmdb_info.get("poster_url")
+                tmdb_rating = tmdb_info.get("vote_average")
+                availability = row.get("_providers")
             else:
-                tmdb_info = None
                 poster_url = None
                 tmdb_rating = None
                 availability = None
@@ -1322,10 +1326,10 @@ with tab_catalog:
 
             year_str = f" ({fmt_year(year)})" if pd.notna(year) else ""
             nota_str = f"⭐ Mi nota: {fmt_rating(nota)}" if pd.notna(nota) else ""
-            imdb_str = f"IMDb: {fmt_rating(imdb_rating)}" if pd.notna(imdb_rating) else ""
+            imdb_str = f"IMDb: {fmt_rating(imdb_rating)}" if pd.notna(imdb_rating) else "IMDb: —"
             tmdb_str = (
                 f"TMDb: {fmt_rating(tmdb_rating)}"
-                if tmdb_rating is not None else "TMDb: N/A"
+                if tmdb_rating is not None else "TMDb: —"
             )
 
             if show_awards:
@@ -1913,8 +1917,8 @@ with tab_analysis:
     {titulo}{f" ({y_str})" if y_str else ""}
   </div>
   <div class="movie-sub">
-    ⭐ Mi nota: {float(my_rating):.1f}<br>
-    IMDb: {float(imdb_rating):.1f}<br>
+    ⭐ Mi nota: {fmt_rating(my_rating)}<br>
+    IMDb: {fmt_rating(imdb_rating)}<br>
     Diferencia (Mi − IMDb): {diff_val:.1f}<br>
     {("<b>Géneros:</b> " + genres + "<br>") if isinstance(genres, str) and genres else ""}
     {f'<a href="{url}" target="_blank">Ver en IMDb</a>' if isinstance(url, str) and url.startswith("http") else ""}<br>
@@ -1941,7 +1945,11 @@ with tab_analysis:
             st.info("No hay datos bajo los filtros actuales.")
         else:
             if st.button("Calcular estadísticas de premios para las películas filtradas"):
-                awards_stats_df = compute_awards_table(filtered[["Title", "Year"]])
+                # Si hay demasiadas, acotar un poco para no saturar la API en primera pasada (opcional)
+                subset = filtered[["Title", "Year"]]
+                if len(subset) > 120:
+                    subset = subset.sort_values("Year").head(80)
+                awards_stats_df = compute_awards_table(subset)
                 if awards_stats_df.empty:
                     st.write("No se pudieron obtener datos de premios para estas películas.")
                 else:
@@ -2129,49 +2137,28 @@ with tab_afi:
             else:
                 df["NormTitle"] = ""
 
+        # Nuevo buscador más tolerante (año ±1 y puntuación de coincidencia)
         def find_match(afi_norm, year, df_full):
-            candidates = df_full[df_full["YearInt"] == year]
+            # ventana de años ±1
+            yr_candidates = df_full[df_full["YearInt"].between(year-1, year+1, inclusive="both")]
 
-            def _try(cands):
-                if cands.empty:
-                    return None
-                return cands.iloc[0]
+            def score_row(r):
+                t = r["NormTitle"]
+                if t == afi_norm:
+                    return 3
+                if afi_norm in t or t in afi_norm:
+                    return 2
+                # pequeña señal por solapamiento de palabras normalizadas (muy conservador)
+                parts = [afi_norm[i:i+5] for i in range(0, len(afi_norm), 5)]
+                return 1 if any(p and p in t for p in parts) else 0
 
-            m = _try(candidates[candidates["NormTitle"] == afi_norm])
-            if m is not None:
-                return m
-
-            m = _try(candidates[candidates["NormTitle"].str.contains(afi_norm, regex=False, na=False)])
-            if m is not None:
-                return m
-
-            m = _try(
-                candidates[candidates["NormTitle"].apply(
-                    lambda t: afi_norm in t or t in afi_norm
-                )]
-            )
-            if m is not None:
-                return m
-
-            candidates = df_full
-
-            m = _try(candidates[candidates["NormTitle"] == afi_norm])
-            if m is not None:
-                return m
-
-            m = _try(candidates[candidates["NormTitle"].str.contains(afi_norm, regex=False, na=False)])
-            if m is not None:
-                return m
-
-            m = _try(
-                candidates[candidates["NormTitle"].apply(
-                    lambda t: afi_norm in t or t in afi_norm
-                )]
-            )
-            if m is not None:
-                return m
-
-            return None
+            pool = yr_candidates if not yr_candidates.empty else df_full
+            if pool.empty:
+                return None
+            scored = pool.assign(_score=pool.apply(score_row, axis=1))\
+                         .sort_values(["_score", "IMDb Rating"], ascending=[False, False])
+            best = scored.iloc[0]
+            return best if best["_score"] > 0 else None
 
         afi_df["Your Rating"] = None
         afi_df["IMDb Rating"] = None
@@ -2297,7 +2284,7 @@ with tab_what:
 
                 tmdb_str = (
                     f"TMDb: {fmt_rating(tmdb_rating)}"
-                    if tmdb_rating is not None else "TMDb: N/A"
+                    if tmdb_rating is not None else "TMDb: —"
                 )
 
                 if show_awards:
@@ -2400,7 +2387,7 @@ with tab_what:
   </div>
   <div class="movie-sub">
     {f"⭐ Mi nota: {fmt_rating(nota)}<br>" if pd.notna(nota) else ""}
-    {f"IMDb: {fmt_rating(imdb_rating)}<br>" if pd.notna(imdb_rating) else ""}
+    {f"IMDb: {fmt_rating(imdb_rating)}<br>" if pd.notna(imdb_rating) else "IMDb: —<br>"}
     {tmdb_str}<br>
     <b>Géneros:</b> {genres}<br>
     <b>Director(es):</b> {directors}<br>

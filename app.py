@@ -1,14 +1,11 @@
 import streamlit as st
 import pandas as pd
 
-# módulos propios
 from modules.utils import (
-    APP_VERSION, apply_theme_and_css, show_changelog_sidebar,
-    load_data
+    APP_VERSION, apply_theme_and_css, show_changelog_sidebar, load_data
 )
 from modules import imdb_catalog, analytics, afi_list, oscars_awards
 
-# ---------- Config y tema ----------
 st.set_page_config(
     page_title=f"🎬 Mi catálogo de Películas · v{APP_VERSION}",
     layout="centered"
@@ -18,7 +15,7 @@ apply_theme_and_css()
 st.title("🎥 Mi catálogo de películas (IMDb)")
 st.caption(f"Versión **v{APP_VERSION}** · powered by Diego Leal")
 
-# ---------- Datos ----------
+# -------- Datos --------
 st.sidebar.header("📂 Datos")
 uploaded = st.sidebar.file_uploader(
     "Subo mi CSV de IMDb (si no, se usa peliculas.csv del repo)",
@@ -41,7 +38,7 @@ if "Title" not in df.columns:
     st.error("El CSV debe contener una columna 'Title'.")
     st.stop()
 
-# ---------- Barra lateral: opciones ----------
+# -------- Barra lateral --------
 st.sidebar.header("🖼️ Opciones de visualización")
 show_posters_fav = st.sidebar.checkbox("Mostrar pósters TMDb en mis favoritas (nota ≥ 9)", value=True)
 
@@ -56,12 +53,9 @@ show_awards = st.sidebar.checkbox("Consultar premios en OMDb (más lento)", valu
 if show_awards:
     st.sidebar.caption("⚠ Puede hacer más lenta la primera carga.")
 
-# Changelog
 show_changelog_sidebar()
 
-# ---------- Filtros ----------
 st.sidebar.header("🎛️ Filtros")
-
 if df["Year"].notna().any():
     min_year = int(df["Year"].min())
     max_year = int(df["Year"].max())
@@ -89,7 +83,6 @@ selected_directors = st.sidebar.multiselect("Directores", options=all_directors)
 order_by = st.sidebar.selectbox("Ordenar por", ["Your Rating", "IMDb Rating", "Year", "Title", "Aleatorio"])
 order_asc = st.sidebar.checkbox("Orden ascendente", value=False)
 
-# comparte flags/valores con los módulos
 st.session_state.update({
     "show_posters_fav": show_posters_fav,
     "use_tmdb_gallery": use_tmdb_gallery,
@@ -103,7 +96,6 @@ st.session_state.update({
     "order_asc": order_asc,
 })
 
-# ---------- Búsqueda única ----------
 st.markdown("## 🔎 Búsqueda en mi catálogo (sobre los filtros actuales)")
 search_query = st.text_input(
     "Buscar por título, director, género, año o calificaciones",
@@ -111,26 +103,44 @@ search_query = st.text_input(
     key="busqueda_unica"
 )
 
-# ---------- Tabs ----------
 tab_catalog, tab_analysis, tab_afi, tab_awards, tab_what = st.tabs(
     ["🎬 Catálogo", "📊 Análisis", "🏆 Lista AFI", "🏆 Premios Óscar", "🎲 ¿Qué ver hoy?"]
 )
 
 with tab_catalog:
-    imdb_catalog.render_catalog_tab(df, search_query)
+    try:
+        imdb_catalog.render_catalog_tab(df, search_query)
+    except Exception as e:
+        st.error("❌ Error en pestaña Catálogo. Se omite para no detener la app.")
+        st.exception(e)
 
 with tab_analysis:
-    analytics.render_analysis_tab(df)
+    try:
+        analytics.render_analysis_tab(df)
+    except Exception as e:
+        st.error("❌ Error en pestaña Análisis.")
+        st.exception(e)
 
 with tab_afi:
-    afi_list.render_afi_tab(df)
+    try:
+        afi_list.render_afi_tab(df)
+    except Exception as e:
+        st.error("❌ Error en pestaña AFI. Revisa que el CSV tenga 'Title' y 'Year'.")
+        st.exception(e)
 
 with tab_awards:
-    oscars_awards.render_awards_tab(df)
+    try:
+        oscars_awards.render_awards_tab(df)
+    except Exception as e:
+        st.error("❌ Error en pestaña Premios Óscar. Revisa 'the_oscar_award.csv'.")
+        st.exception(e)
 
 with tab_what:
-    imdb_catalog.render_what_to_watch(df)
+    try:
+        imdb_catalog.render_what_to_watch(df)
+    except Exception as e:
+        st.error("❌ Error en pestaña ¿Qué ver hoy?.")
+        st.exception(e)
 
-# Footer: versión y crédito
 st.markdown("---")
 st.caption(f"Versión **v{APP_VERSION}** — powered by **Diego Leal**")

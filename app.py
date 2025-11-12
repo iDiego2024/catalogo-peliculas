@@ -1,85 +1,123 @@
-# app.py — Orquestador modular
 import streamlit as st
 import pandas as pd
-import os
 
-# ====== Versión ======
-APP_VERSION = "1.1.1"  # sube un patch por los fixes
+# módulos propios
+from modules.utils import (
+    APP_VERSION, apply_theme_and_css, show_changelog_sidebar,
+    load_data
+)
+from modules import imdb_catalog, analytics, afi_list, oscars_awards
 
-# ====== Imports de módulos ======
-try:
-    from modules import imdb_catalog, analytics, oscars_awards, afi_list, what_to_watch, utils
-except Exception as e:
-    st.error("No se pudieron importar los módulos. Revisa la carpeta 'modules/'.\n\n" + str(e))
-    st.stop()
-
-# ====== Config ======
+# ---------- Config y tema ----------
 st.set_page_config(
     page_title=f"🎬 Mi catálogo de Películas · v{APP_VERSION}",
-    layout="wide",
+    layout="centered"
 )
+apply_theme_and_css()
 
-st.markdown(
-    "<h1 style='margin-top:0'>🎥 Mi catálogo de películas (IMDb)</h1>",
-    unsafe_allow_html=True,
-)
+st.title("🎥 Mi catálogo de películas (IMDb)")
+st.caption(f"Versión **v{APP_VERSION}** · powered by Diego Leal")
 
-# ====== Carga de datos (sidebar) ======
+# ---------- Datos ----------
 st.sidebar.header("📂 Datos")
 uploaded = st.sidebar.file_uploader(
-    "Sube tu CSV de IMDb (si no, se usa peliculas.csv del repo)",
+    "Subo mi CSV de IMDb (si no, se usa peliculas.csv del repo)",
     type=["csv"]
 )
 
-def _safe_load(path_or_buf):
-    """Usa utils.load_data si existe; si no, un lector mínimo compatible."""
-    if hasattr(utils, "load_data"):
-        return utils.load_data(path_or_buf)
-    # lector mínimo
-    df = pd.read_csv(path_or_buf)
-    if "Your Rating" in df.columns:
-        df["Your Rating"] = pd.to_numeric(df["Your Rating"], errors="coerce")
-    if "IMDb Rating" in df.columns:
-        df["IMDb Rating"] = pd.to_numeric(df["IMDb Rating"], errors="coerce")
-    if "Year" in df.columns:
-        df["Year"] = (
-            df["Year"].astype(str).str.extract(r"(\d{4})")[0].astype(float)
-        )
-    else:
-        df["Year"] = None
-    # columnas esperadas por los módulos
-    if "Genres" not in df.columns:
-        df["Genres"] = ""
-    if hasattr(utils, "normalize_title"):
-        norm = utils.normalize_title
-    else:
-        import re
-        norm = lambda s: re.sub(r"[^a-z0-9]+", "", str(s).lower())
-    df["NormTitle"] = df.get("Title", "").apply(norm)
-    df["GenreList"] = df["Genres"].fillna("").apply(lambda x: [] if x == "" else str(x).split(", "))
-    df["YearInt"] = df["Year"].fillna(-1).astype(int)
-    return df
-
 if uploaded is not None:
-    df = _safe_load(uploaded)
+    df = load_data(uploaded)
 else:
-    if os.path.exists("peliculas.csv"):
-        df = _safe_load("peliculas.csv")
-    else:
-        st.error("No encontré 'peliculas.csv' y no subiste CSV. Sube tu CSV para continuar.")
+    try:
+        df = load_data("peliculas.csv")
+    except Exception:
+        st.error(
+            "No se encontró 'peliculas.csv' y no se subió archivo.\n\n"
+            "Sube tu CSV de IMDb desde la barra lateral para continuar."
+        )
         st.stop()
 
 if "Title" not in df.columns:
     st.error("El CSV debe contener una columna 'Title'.")
     st.stop()
 
-# ====== Tabs ======
+# ---------- Barra lateral: opciones ----------
+st.sidebar.header("🖼️ Opciones de visualización")
+show_posters_fav = st.sidebar.checkbox("Mostrar pósters TMDb en mis favoritas (nota ≥ 9)", value=True)
+
+st.sidebar.header("🌐 TMDb")
+use_tmdb_gallery = st.sidebar.checkbox("Usar TMDb en la galería visual", value=True)
+
+st.sidebar.header("🎬 Tráilers")
+show_trailers = st.sidebar.checkbox("Mostrar tráiler de YouTube (si hay API key)", value=True)
+
+st.sidebar.header("⚙️ Opciones avanzadas")
+show_awards = st.sidebar.checkbox("Consultar premios en OMDb (más lento)", value=False)
+if show_awards:
+    st.sidebar.caption("⚠ Puede hacer más lenta la primera carga.")
+
+# Changelog
+show_changelog_sidebar()
+
+# ---------- Filtros ----------
+st.sidebar.header("🎛️ Filtros")
+
+if df["Year"].notna().any():
+    min_year = int(df["Year"].min())
+    max_year = int(df["Year"].max())
+    year_range = st.sidebar.slider("Rango de años", min_year, max_year, (min_year, max_year))
+else:
+    year_range = (0, 9999)
+
+if df["Your Rating"].notna().any():
+    min_rating = int(df["Your Rating"].min())
+    max_rating = int(df["Your Rating"].max())
+    rating_range = st.sidebar.slider("Mi nota (Your Rating)", min_rating, max_rating, (min_rating, max_rating))
+else:
+    rating_range = (0, 10)
+
+all_genres = sorted(
+    set(g for sub in df.get("GenreList", pd.Series(dtype=object)).dropna() for g in sub if g)
+)
+selected_genres = st.sidebar.multiselect("Géneros (todas las seleccionadas deben estar presentes)", options=all_genres)
+
+all_directors = sorted(
+    set(d.strip() for d in df.get("Directors", pd.Series(dtype=str)).dropna() if str(d).strip() != "")
+)
+selected_directors = st.sidebar.multiselect("Directores", options=all_directors)
+
+order_by = st.sidebar.selectbox("Ordenar por", ["Your Rating", "IMDb Rating", "Year", "Title", "Aleatorio"])
+order_asc = st.sidebar.checkbox("Orden ascendente", value=False)
+
+# comparte flags/valores con los módulos
+st.session_state.update({
+    "show_posters_fav": show_posters_fav,
+    "use_tmdb_gallery": use_tmdb_gallery,
+    "show_trailers": show_trailers,
+    "show_awards": show_awards,
+    "year_range": year_range,
+    "rating_range": rating_range,
+    "selected_genres": selected_genres,
+    "selected_directors": selected_directors,
+    "order_by": order_by,
+    "order_asc": order_asc,
+})
+
+# ---------- Búsqueda única ----------
+st.markdown("## 🔎 Búsqueda en mi catálogo (sobre los filtros actuales)")
+search_query = st.text_input(
+    "Buscar por título, director, género, año o calificaciones",
+    placeholder="Escribe cualquier cosa… (se aplica en tiempo real)",
+    key="busqueda_unica"
+)
+
+# ---------- Tabs ----------
 tab_catalog, tab_analysis, tab_afi, tab_awards, tab_what = st.tabs(
     ["🎬 Catálogo", "📊 Análisis", "🏆 Lista AFI", "🏆 Premios Óscar", "🎲 ¿Qué ver hoy?"]
 )
 
 with tab_catalog:
-    imdb_catalog.render_catalog_tab(df)
+    imdb_catalog.render_catalog_tab(df, search_query)
 
 with tab_analysis:
     analytics.render_analysis_tab(df)
@@ -88,11 +126,11 @@ with tab_afi:
     afi_list.render_afi_tab(df)
 
 with tab_awards:
-    oscars_awards.render_oscars_tab(df)
+    oscars_awards.render_awards_tab(df)
 
 with tab_what:
-    what_to_watch.render_what_tab(df)
+    imdb_catalog.render_what_to_watch(df)
 
-# ====== Footer con versión ======
+# Footer: versión y crédito
 st.markdown("---")
-st.caption(f"Versión **v{APP_VERSION}** · powered by **Diego Leal**")
+st.caption(f"Versión **v{APP_VERSION}** — powered by **Diego Leal**")

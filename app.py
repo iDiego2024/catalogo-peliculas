@@ -2352,204 +2352,319 @@ with tab_afi:
         )
 
 # ============================================================
-#                     TAB 4: PREMIOS ÓSCAR (ACTUALIZADO)
+#                     TAB 4: PREMIOS ÓSCAR (FULL_DATA)
 # ============================================================
 
 with tab_awards:
-    st.markdown("## 🏆 Premios de la Academia (ganadores)")
+    st.markdown("## 🏆 Premios de la Academia (basado en full_data.csv)")
 
-    # Cargar datasets del repo
-    winners = load_oscar_winners("the_oscar_award.csv")
-    nominees = load_oscar_full("full_data.csv")  # opcional para análisis con nominados
+    @st.cache_data
+    def load_full_data(path_csv="full_data.csv"):
+        """Lectura robusta del dataset unificado (nominaciones + ganadores)."""
+        try:
+            dff = pd.read_csv(path_csv, sep=None, engine="python", on_bad_lines="skip")
+        except Exception:
+            # Segundo intento TSV
+            dff = pd.read_csv(path_csv, sep="\t", on_bad_lines="skip")
 
-    if winners.empty:
-        st.info("No pude cargar ganadores (the_oscar_award.csv). Revisa que exista en el repo.")
+        # Normalizaciones suaves
+        dff.columns = [c.strip() for c in dff.columns]
+        # Columnas esperadas con nombres "clásicos" del repo DLu
+        # Year, Ceremony, Category, CanonicalCategory, Nominee, Film, Winner, NomineeIds (puede o no existir)
+        if "CanonicalCategory" in dff.columns:
+            dff["CanonCat"] = dff["CanonicalCategory"].astype(str)
+        else:
+            dff["CanonCat"] = dff.get("Category", "").astype(str)
+
+        # Año (algunas filas pueden traer NA)
+        if "Year" in dff.columns:
+            dff["YearInt"] = pd.to_numeric(dff["Year"], errors="coerce").fillna(-1).astype(int)
+        else:
+            dff["YearInt"] = -1
+
+        # Ceremonia (por si existe columna independiente)
+        if "Ceremony" in dff.columns:
+            dff["CeremonyInt"] = pd.to_numeric(dff["Ceremony"], errors="coerce").fillna(dff["YearInt"]).astype(int)
+        else:
+            dff["CeremonyInt"] = dff["YearInt"]
+
+        # Ganador/nominado
+        win_col = "Winner" if "Winner" in dff.columns else None
+        if win_col:
+            dff["IsWinner"] = dff[win_col].astype(str).str.lower().isin(
+                ["1", "true", "yes", "winner", "ganador", "ganadora"]
+            )
+        else:
+            dff["IsWinner"] = False
+
+        # Texto entidad (persona/estudio) y película
+        dff["Nominee"] = dff.get("Nominee", "").astype(str)
+        dff["Film"] = dff.get("Film", "").astype(str)
+
+        # IDs de nominados (pueden ser múltiples por fila separados por comas/punto y coma)
+        if "NomineeIds" in dff.columns:
+            dff["NomineeIds"] = dff["NomineeIds"].fillna("").astype(str)
+            dff["NomineeIdsList"] = dff["NomineeIds"].apply(
+                lambda s: [x.strip() for x in re.split(r"[;,]", s) if x.strip()]
+            )
+        else:
+            dff["NomineeIdsList"] = dff["Nominee"].apply(lambda s: [s] if s else [])
+
+        # Normalizar para cruzar con tu catálogo (por película)
+        dff["NormFilm"] = dff["Film"].apply(normalize_title)
+
+        return dff
+
+    # Carga base
+    osc = load_full_data("full_data.csv")
+    if osc.empty:
+        st.warning("No pude cargar 'full_data.csv'. Asegúrate de incluirlo en el repo.")
+        st.stop()
+
+    # Cruce (opcional) con tu catálogo por Título + Año
+    # Reutilizamos df (tu catálogo) y attach_my_catalog_cols, pero adaptado a 'osc' por Film+Year
+    def attach_catalog_full(osc_df, catalog_df):
+        if catalog_df is None or catalog_df.empty:
+            out = osc_df.copy()
+            out["InMyCatalog"] = False
+            out["MyRating"] = None
+            out["MyIMDb"] = None
+            out["CatalogURL"] = None
+            return out
+
+        cat = catalog_df.copy()
+        if "NormTitle" not in cat.columns:
+            cat["NormTitle"] = cat.get("Title", "").apply(normalize_title)
+        if "YearInt" not in cat.columns:
+            cat["YearInt"] = cat.get("Year", pd.Series([None]*len(cat))).fillna(-1).astype(float).astype(int)
+
+        tmp = osc_df.copy()
+        # Usamos YearInt del Oscar para cruzar contra YearInt del catálogo
+        merged = tmp.merge(
+            cat[["NormTitle", "YearInt", "Your Rating", "IMDb Rating", "URL"]],
+            left_on=["NormFilm", "YearInt"],
+            right_on=["NormTitle", "YearInt"],
+            how="left",
+            suffixes=("", "_cat")
+        )
+        merged["InMyCatalog"] = merged["URL"].notna()
+        merged["MyRating"] = merged["Your Rating"]
+        merged["MyIMDb"] = merged["IMDb Rating"]
+        merged["CatalogURL"] = merged["URL"]
+        merged = merged.drop(columns=["NormTitle", "Your Rating", "IMDb Rating", "URL"], errors="ignore")
+        return merged
+
+    osc_x = attach_catalog_full(osc, df)
+
+    # --------- Controles ----------
+    st.markdown("### 🎛️ Filtros en premios (full_data)")
+    colf1, colf2, colf3 = st.columns([1, 1, 2])
+
+    min_cer = int(osc_x["CeremonyInt"].replace(-1, pd.NA).dropna().min())
+    max_cer = int(osc_x["CeremonyInt"].replace(-1, pd.NA).dropna().max())
+    if not pd.isna(min_cer) and not pd.isna(max_cer) and min_cer <= max_cer:
+        yr_default = (min_cer, max_cer)
     else:
-        # Enlazar con tu catálogo
-        winners_x = attach_my_catalog_cols(winners, df)
+        yr_default = (1927, 2025)
 
-        # --------- Controles locales ----------
-        st.markdown("### 🎛️ Filtros en premios")
-        colf1, colf2, colf3 = st.columns([1, 1, 2])
+    with colf1:
+        year_range_osc = st.slider("Año de ceremonia", yr_default[0], yr_default[1], yr_default)
 
-        if winners_x["YearCeremonyInt"].ne(-1).any():
-            min_cer = int(winners_x.loc[winners_x["YearCeremonyInt"] != -1, "YearCeremonyInt"].min())
-            max_cer = int(winners_x["YearCeremonyInt"].max())
-        else:
-            min_cer, max_cer = 1927, 2025
+    all_cats = sorted(osc_x["CanonCat"].dropna().unique().tolist())
+    with colf2:
+        cats_sel = st.multiselect("Categorías (canon)", options=all_cats, default=[])
 
-        with colf1:
-            year_range_osc = st.slider("Año de ceremonia", min_cer, max_cer, (min_cer, max_cer))
+    with colf3:
+        q_aw = st.text_input("Buscar en categoría, nominados/productoras o película", placeholder="Ej: 'BEST PICTURE' o 'Metro-Goldwyn-Mayer' o 'Parasite'")
 
-        all_cats = sorted(winners_x["CanonCat"].dropna().unique().tolist())
-        with colf2:
-            cats_sel = st.multiselect("Categorías (canon)", options=all_cats, default=[])
+    # --------- Filtrado ----------
+    ff = osc_x[
+        (osc_x["CeremonyInt"] >= year_range_osc[0]) &
+        (osc_x["CeremonyInt"] <= year_range_osc[1])
+    ].copy()
+    if cats_sel:
+        ff = ff[ff["CanonCat"].isin(cats_sel)]
 
-        with colf3:
-            q_aw = st.text_input("Buscar en nombre/persona, película o categoría", placeholder="Ej: 'ACTRESS' o 'Spielberg' o 'Parasite'")
+    if q_aw:
+        q = q_aw.strip().lower()
+        ff = ff[
+            ff["CanonCat"].astype(str).str.lower().str.contains(q, na=False) |
+            ff["Nominee"].astype(str).str.lower().str.contains(q, na=False) |
+            ff["Film"].astype(str).str.lower().str.contains(q, na=False)
+        ]
 
-        # Filtros
-        ff = winners_x[
-            (winners_x["YearCeremonyInt"] >= year_range_osc[0]) &
-            (winners_x["YearCeremonyInt"] <= year_range_osc[1])
-        ].copy()
+    # --------- Métricas ----------
+    c1, c2, c3, c4 = st.columns(4)
+    with c1:
+        st.metric("Ceremonias (rango)", f"{year_range_osc[0]}–{year_range_osc[1]}")
+    with c2:
+        st.metric("Nominaciones (filtradas)", len(ff))
+    with c3:
+        st.metric("Categorías distintas", ff["CanonCat"].nunique())
+    with c4:
+        st.metric("Ganadores en mi catálogo", int(ff[ff["IsWinner"]]["InMyCatalog"].sum()))
 
-        if cats_sel:
-            ff = ff[ff["CanonCat"].isin(cats_sel)]
+    st.caption("Fuente: `full_data.csv`. Se resaltan en verde únicamente los ganadores por categoría/año.")
 
-        if q_aw:
-            q = q_aw.strip().lower()
-            mask = (
-                ff["CanonCat"].astype(str).str.lower().str.contains(q, na=False) |
-                ff["name"].astype(str).str.lower().str.contains(q, na=False) |
-                ff["film"].astype(str).str.lower().str.contains(q, na=False)
+    # --------- Vista por año (ganadores resaltados) ----------
+    st.markdown("### 📅 Vista por año (categorías → nominados/ganador)")
+    years_sorted = sorted(ff["CeremonyInt"].unique())
+    if years_sorted:
+        y_pick = st.selectbox("Elige año de ceremonia", options=years_sorted, index=len(years_sorted)-1, key="aw_select_year_full")
+        table_year = ff[ff["CeremonyInt"] == y_pick].copy().sort_values(["CanonCat", "IsWinner"], ascending=[True, False])
+    else:
+        y_pick = None
+    if not years_sorted or table_year.empty:
+        st.info("No hay filas para ese año con los filtros actuales.")
+    else:
+        pretty = table_year[[
+            "CanonCat", "Category", "Nominee", "Film", "IsWinner",
+            "InMyCatalog", "MyRating", "MyIMDb", "CatalogURL"
+        ]].copy().rename(columns={
+            "CanonCat": "Categoría",
+            "Category": "Categoría (cruda)",
+            "Nominee": "Entidad (persona/estudio)",
+            "Film": "Película",
+            "IsWinner": "Ganador",
+            "InMyCatalog": "En mi catálogo",
+            "MyRating": "Mi nota",
+            "MyIMDb": "IMDb",
+            "CatalogURL": "IMDb (mía)"
+        })
+
+        pretty["Ganador"] = pretty["Ganador"].map({True: "🏆", False: "—"})
+        pretty["En mi catálogo"] = pretty["En mi catálogo"].map({True: "✅", False: "—"})
+        if "Mi nota" in pretty.columns:
+            pretty["Mi nota"] = pretty["Mi nota"].apply(lambda v: f"{float(v):.1f}" if pd.notna(v) else "")
+        if "IMDb" in pretty.columns:
+            pretty["IMDb"] = pretty["IMDb"].apply(lambda v: f"{float(v):.1f}" if pd.notna(v) else "")
+
+        def _style_row(row):
+            if row.get("Ganador") == "🏆":
+                return ['background-color: rgba(34,197,94,0.18); color:#ecfdf5; font-weight:700; border-left:3px solid #22c55e'] * len(row)
+            return [''] * len(row)
+
+        styled = (
+            pretty.style
+            .set_table_styles([{"selector": "th", "props": [("text-align", "left")]}])
+            .set_properties(**{"text-align": "left"})
+            .apply(_style_row, axis=1)
+        )
+        st.dataframe(styled, use_container_width=True, hide_index=True)
+
+        csv_dl = table_year.to_csv(index=False).encode("utf-8")
+        st.download_button("⬇️ Descargar filas del año (CSV)", data=csv_dl, file_name=f"oscars_full_{y_pick}.csv", mime="text/csv")
+
+    # --------- Rankings en el rango (por Nominaciones) ----------
+    st.markdown("### 🥇 Rankings en el rango seleccionado (Nominaciones)")
+    if ff.empty:
+        st.info("No hay datos para rankings con los filtros actuales.")
+    else:
+        colr1, colr2 = st.columns(2)
+        with colr1:
+            top_films = (
+                ff.groupby(["Film", "YearInt"]).size()
+                .reset_index(name="Nominaciones")
+                .sort_values(["Nominaciones", "Film"], ascending=[False, True])
+                .head(15)
             )
-            ff = ff[mask]
-
-        # --------- Métricas ----------
-        c1, c2, c3, c4 = st.columns(4)
-        with c1:
-            st.metric("Ceremonias (rango)", f"{year_range_osc[0]}–{year_range_osc[1]}")
-        with c2:
-            st.metric("Ganadores (filtrados)", len(ff))
-        with c3:
-            st.metric("Categorías distintas", ff["CanonCat"].nunique())
-        with c4:
-            st.metric("Ganadores en mi catálogo", int(ff["InMyCatalog"].sum()))
-
-        st.caption("Los ganadores provienen de `the_oscar_award.csv`. Si incluyes `full_data.csv`, verás rankings por nominaciones y más análisis.")
-
-        # --------- Vista por año ----------
-        st.markdown("### 📅 Vista por año (categorías y ganadores)")
-        years_sorted = sorted(ff["YearCeremonyInt"].unique())
-        if years_sorted:
-            y_pick = st.selectbox("Elige año de ceremonia", options=years_sorted, index=len(years_sorted)-1, key="aw_select_year")
-            table_year = ff[ff["YearCeremonyInt"] == y_pick].copy()
-        else:
-            y_pick = None
-            table_year = pd.DataFrame()
-
-        if table_year.empty:
-            st.info("No hay ganadores para ese año con los filtros actuales.")
-        else:
-            table_year = table_year.sort_values(["CanonCat", "film", "name"])
-            pretty = table_year[["CanonCat", "category", "name", "film", "YearFilmInt", "InMyCatalog", "MyRating", "MyIMDb", "CatalogURL"]].copy()
-            pretty = pretty.rename(columns={
-                "CanonCat": "Categoría",
-                "category": "Categoría (cruda)",
-                "name": "Ganador/a",
-                "film": "Película",
-                "YearFilmInt": "Año de película",
-                "InMyCatalog": "En mi catálogo",
-                "MyRating": "Mi nota",
-                "MyIMDb": "IMDb",
-                "CatalogURL": "IMDb (mía)"
-            })
-            pretty["En mi catálogo"] = pretty["En mi catálogo"].map({True: "✅", False: "—"})
-            if "Mi nota" in pretty.columns:
-                pretty["Mi nota"] = pretty["Mi nota"].apply(lambda v: f"{float(v):.1f}" if pd.notna(v) else "")
-            if "IMDb" in pretty.columns:
-                pretty["IMDb"] = pretty["IMDb"].apply(lambda v: f"{float(v):.1f}" if pd.notna(v) else "")
-
-            # ---- Resaltado por fila (todas son ganadoras) ----
-            def _style_winners(row):
-                style = 'background-color: rgba(34,197,94,0.18); color:#ecfdf5; font-weight:700; border-left:3px solid #22c55e'
-                return [style] * len(row)
-
-            styled = (
-                pretty.style
-                .set_table_styles([{"selector": "th", "props": [("text-align", "left")]}])
-                .set_properties(**{"text-align": "left"})
-                .apply(_style_winners, axis=1)
-            )
-
-            st.dataframe(styled, use_container_width=True, hide_index=True)
-
-            csv_dl = table_year.to_csv(index=False).encode("utf-8")
-            st.download_button("⬇️ Descargar ganadores del año (CSV)", data=csv_dl, file_name=f"oscars_{y_pick}.csv", mime="text/csv")
-
-        # --------- Rankings (por Nominaciones) ----------
-        st.markdown("### 🥇 Rankings en el rango seleccionado (Nominaciones al Óscar)")
-        if nominees.empty:
-            st.info("No pude cargar nominaciones (full_data.csv). Esta sección requiere ese archivo.")
-        else:
-            # Filtrar nominaciones con los mismos criterios
-            nom_ff = nominees[
-                (nominees["YearInt"] >= year_range_osc[0]) &
-                (nominees["YearInt"] <= year_range_osc[1])
-            ].copy()
-            if cats_sel:
-                nom_ff = nom_ff[nom_ff["CanonCat"].isin(cats_sel)]
-            if q_aw:
-                q = q_aw.strip().lower()
-                nmask = (
-                    nom_ff["CanonCat"].astype(str).str.lower().str.contains(q, na=False) |
-                    nom_ff["Name"].astype(str).str.lower().str.contains(q, na=False) |
-                    nom_ff["Film"].astype(str).str.lower().str.contains(q, na=False)
+            if not top_films.empty:
+                st.dataframe(
+                    top_films.rename(columns={"Film": "Película", "YearInt": "Año"}),
+                    use_container_width=True, hide_index=True
                 )
-                nom_ff = nom_ff[nmask]
-
-            colr1, colr2 = st.columns(2)
-            with colr1:
-                top_films = (
-                    nom_ff.groupby(["Film", "YearInt"]).size()
-                    .reset_index(name="Noms")
-                    .sort_values(["Noms", "Film"], ascending=[False, True])
-                    .head(15)
-                )
-                if not top_films.empty:
-                    tf_disp = top_films.rename(columns={"Film": "Película", "YearInt": "Año", "Noms": "Nominaciones al Óscar"})
-                    st.dataframe(tf_disp, use_container_width=True, hide_index=True)
-                else:
-                    st.write("Sin datos de películas para este rango.")
-
-            with colr2:
-                top_people = (
-                    nom_ff.groupby("Name").size()
-                    .reset_index(name="Noms")
-                    .sort_values(["Noms", "Name"], ascending=[False, True])
-                    .head(15)
-                )
-                if not top_people.empty:
-                    tp_disp = top_people.rename(columns={"Name": "Persona", "Noms": "Nominaciones al Óscar"})
-                    st.dataframe(tp_disp, use_container_width=True, hide_index=True)
-                else:
-                    st.write("Sin datos de personas para este rango.")
-
-        # --------- Análisis por categoría (nuevo) ----------
-        st.markdown("### 📈 Análisis por categoría")
-        if all_cats:
-            default_idx = all_cats.index("BEST PICTURE") if "BEST PICTURE" in all_cats else 0
-            cat_for_analysis = st.selectbox("Elige una categoría", options=all_cats, index=default_idx, key="aw_analysis_cat")
-            fa = ff[ff["CanonCat"] == cat_for_analysis].copy()
-
-            if fa.empty:
-                st.info("No hay ganadores para esa categoría en el rango actual.")
             else:
-                # Distribución por década (ganadores)
-                fa["Decada"] = (fa["YearCeremonyInt"] // 10 * 10).astype(int)
-                dec_counts = fa.groupby("Decada").size().reset_index(name="Ganadores").sort_values("Decada")
-                if not dec_counts.empty:
-                    disp = dec_counts.copy()
-                    disp["Decada"] = disp["Decada"].astype(str)
-                    disp = disp.set_index("Decada")
-                    st.write("**Ganadores por década**")
-                    st.bar_chart(disp)
-                else:
-                    st.write("No hay datos suficientes para la distribución por década.")
+                st.write("Sin datos de películas en este rango.")
 
-                # Top personas con más premios en esa categoría
-                top_people_cat = fa.groupby("name").size().reset_index(name="Ganados").sort_values(["Ganados", "name"], ascending=[False, True]).head(15)
-                if not top_people_cat.empty:
-                    tpc = top_people_cat.rename(columns={"name": "Persona"})
-                    st.write("**Top personas con más premios en esta categoría**")
-                    st.dataframe(tpc, use_container_width=True, hide_index=True)
-                else:
-                    st.write("No hay suficientes personas para el top de la categoría.")
+        with colr2:
+            # Explode por NomineeIdsList (productoras/personas/entidades)
+            ent = ff.copy()
+            ent = ent.explode("NomineeIdsList")
+            ent["EntidadId"] = ent["NomineeIdsList"].fillna("").astype(str)
+            ent = ent[ent["EntidadId"] != ""]
+            top_entities = (
+                ent.groupby("EntidadId").size()
+                .reset_index(name="Nominaciones")
+                .sort_values(["Nominaciones", "EntidadId"], ascending=[False, True])
+                .head(15)
+            )
+            if not top_entities.empty:
+                st.dataframe(
+                    top_entities.rename(columns={"EntidadId": "Entidad (persona/estudio)"}),
+                    use_container_width=True, hide_index=True
+                )
+            else:
+                # Fallback a texto Nominee si no hay NomineeIds
+                top_nom = (
+                    ff.groupby("Nominee").size()
+                    .reset_index(name="Nominaciones")
+                    .sort_values(["Nominaciones", "Nominee"], ascending=[False, True])
+                    .head(15)
+                )
+                st.dataframe(
+                    top_nom.rename(columns={"Nominee": "Entidad (persona/estudio)"}),
+                    use_container_width=True, hide_index=True
+                )
+
+    # --------- Análisis por categoría ----------
+    st.markdown("### 📈 Análisis por categoría")
+    if not all_cats:
+        st.info("No hay categorías disponibles en los datos.")
+    else:
+        default_idx = all_cats.index("BEST PICTURE") if "BEST PICTURE" in all_cats else 0
+        cat_for_analysis = st.selectbox("Elige una categoría", options=all_cats, index=default_idx, key="aw_analysis_cat_full")
+        fa = ff[ff["CanonCat"] == cat_for_analysis].copy()
+
+        if fa.empty:
+            st.info("No hay filas para esa categoría con los filtros actuales.")
         else:
-            st.info("No hay categorías disponibles en los datos.")
+            # Ganadores por década (solo Winner=True)
+            fa_w = fa[fa["IsWinner"]].copy()
+            fa_w["Década"] = (fa_w["CeremonyInt"] // 10 * 10).astype(int)
+            dec_counts = (
+                fa_w.groupby("Década").size().reset_index(name="Ganadores")
+                .sort_values("Década")
+            )
+            if not dec_counts.empty:
+                disp = dec_counts.copy()
+                disp["Década"] = disp["Década"].astype(str)
+                disp = disp.set_index("Década")
+                st.write("**Ganadores por década (sólo winners)**")
+                st.bar_chart(disp)
+            else:
+                st.write("Sin datos suficientes para la distribución por década.")
 
-        # (Se ha eliminado la sección 'Tendencias por categoría' a petición)
+            # Top entidades (productoras/personas) con más premios en la categoría (Winner=True)
+            ent_w = fa_w.copy().explode("NomineeIdsList")
+            ent_w["EntidadId"] = ent_w["NomineeIdsList"].fillna("").astype(str)
+            ent_w = ent_w[ent_w["EntidadId"] != ""]
+            if not ent_w.empty:
+                top_entities_cat = (
+                    ent_w.groupby("EntidadId").size()
+                    .reset_index(name="Premios")
+                    .sort_values(["Premios", "EntidadId"], ascending=[False, True])
+                    .head(15)
+                )
+                st.write("**Top entidades con más premios en esta categoría (ganadores)**")
+                st.dataframe(
+                    top_entities_cat.rename(columns={"EntidadId": "Entidad (persona/estudio)"}),
+                    use_container_width=True, hide_index=True
+                )
+            else:
+                # Fallback a Nominee text si no hay NomineeIds
+                top_nom_cat = (
+                    fa_w.groupby("Nominee").size()
+                    .reset_index(name="Premios")
+                    .sort_values(["Premios", "Nominee"], ascending=[False, True])
+                    .head(15)
+                )
+                st.write("**Top entidades con más premios (fallback a texto Nominee)**")
+                st.dataframe(
+                    top_nom_cat.rename(columns={"Nominee": "Entidad (persona/estudio)"}),
+                    use_container_width=True, hide_index=True
+                )
+
+    # Nota: quitamos la antigua sección de “Tendencias por categoría”.
 
         # --------- Nominaciones opcionales ----------
         with st.expander("🔎 (Opcional) Ver también nominaciones del año elegido"):

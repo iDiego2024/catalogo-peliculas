@@ -1,167 +1,185 @@
 # modules/imdb_catalog.py
+from __future__ import annotations
 import math
-import pandas as pd
+from typing import Dict, Any, Optional, List
+
 import streamlit as st
+import pandas as pd
 
 from modules.utils import (
-    get_tmdb_basic_info, get_tmdb_providers, get_tmdb_similar_movies,
-    get_youtube_trailer_url, get_rating_colors, fmt_year, fmt_rating
+    fmt_year, fmt_rating, get_rating_colors,
+    get_tmdb_basic_info, get_tmdb_providers,
 )
 
-def _apply_search(df_in: pd.DataFrame, query: str) -> pd.DataFrame:
-    if not query: return df_in
-    q = str(query).strip().lower()
-    if "SearchText" not in df_in.columns: return df_in
-    return df_in[df_in["SearchText"].str.contains(q, na=False, regex=False)]
+# ------------------------------------------------------------
+# Helpers internos
+# ------------------------------------------------------------
 
-def render_catalog_tab(
-    filtered_df: pd.DataFrame,
-    search_query: str,
-    use_tmdb_gallery: bool,
-    show_trailers: bool,
-    consult_awards: bool,   # no-op aquí (compat)
-):
-    # --- KPIs
-    st.markdown("### 📈 Resumen de resultados")
-    c1,c2,c3 = st.columns(3)
-    with c1: st.metric("Películas tras filtros + búsqueda", len(_apply_search(filtered_df, search_query)))
-    with c2:
-        col = pd.to_numeric(filtered_df.get("Your Rating"), errors="coerce")
-        st.metric("Promedio de mi nota", f"{col.dropna().mean():.2f}" if col.notna().any() else "N/A")
-    with c3:
-        col = pd.to_numeric(filtered_df.get("IMDb Rating"), errors="coerce")
-        st.metric("Promedio IMDb", f"{col.dropna().mean():.2f}" if col.notna().any() else "N/A")
+def _poster_card_html(title: str,
+                      year,
+                      your_rating,
+                      imdb_rating,
+                      poster_url: Optional[str]) -> str:
+    base_rating = your_rating if pd.notna(your_rating) else imdb_rating
+    border, glow = get_rating_colors(base_rating)
+    year_str = f" ({fmt_year(year)})" if pd.notna(year) else ""
 
+    if poster_url:
+        poster = f"""
+<div class="poster-frame">
+  <img class="poster-img" src="{poster_url}" alt="{title}">
+</div>"""
+    else:
+        poster = """
+<div class="poster-frame">
+  <div class="poster-placeholder">
+    <div class="film-reel">🎞️</div>
+    <div class="film-reel-text">Sin póster</div>
+  </div>
+</div>"""
+
+    rating_line = (
+        f"{'⭐ ' + fmt_rating(your_rating) if pd.notna(your_rating) else ''}"
+        f"{' | ' if pd.notna(your_rating) and pd.notna(imdb_rating) else ''}"
+        f"{'IMDb ' + fmt_rating(imdb_rating) if pd.notna(imdb_rating) else ''}"
+    )
+
+    return f"""
+<div class="poster-card" style="
+  border-color:{border};
+  box-shadow:0 0 0 1px rgba(15,23,42,.9), 0 0 22px {glow};
+">
+  {poster}
+  <h4>{title}{year_str}</h4>
+  <p>{rating_line}</p>
+</div>"""
+
+def _grid_css_once():
+    if "grid_css_injected" in st.session_state:
+        return
+    st.session_state["grid_css_injected"] = True
+    st.markdown("""
+<style>
+.poster-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(210px,1fr));
+  gap:18px;
+  width:100%;
+}
+@media (max-width:900px){
+  .poster-grid{grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;}
+}
+.poster-card{
+  background: radial-gradient(circle at top left, rgba(15,23,42,.90), rgba(15,23,42,.82));
+  border:1px solid rgba(148,163,184,.45);
+  border-radius:14px;
+  padding:12px;
+  transition:transform .15s ease-out, box-shadow .15s ease-out, border-color .15s;
+}
+.poster-card:hover{
+  transform:translateY(-3px) scale(1.01);
+  border-color:#facc15;
+  box-shadow:0 0 0 1px rgba(250,204,21,.7), 0 0 28px rgba(250,204,21,.8);
+}
+.poster-card h4{
+  margin:.4rem 0 .1rem 0;
+  font-weight:700; letter-spacing:.02em; font-size:.92rem; color:#f9fafb;
+}
+.poster-card p{
+  margin:0; color:#cbd5f5; font-size:.82rem;
+}
+.poster-frame{
+  width:100%; aspect-ratio:2/3; border-radius:12px; overflow:hidden;
+  border:1px solid rgba(148,163,184,.5);
+  background: radial-gradient(circle at top, #020617 0%, #000 55%, #020617 100%);
+  box-shadow:0 14px 30px rgba(0,0,0,.85);
+}
+.poster-img{ width:100%; height:100%; object-fit:cover; display:block; transition:transform .25s ease-out;}
+.poster-card:hover .poster-img{ transform:scale(1.03); }
+.poster-placeholder{
+  width:100%; height:100%; display:flex; flex-direction:column;
+  align-items:center; justify-content:center;
+  background:radial-gradient(circle at 15% 0%, rgba(250,204,21,.12), rgba(15,23,42,1)),
+            radial-gradient(circle at 85% 100%, rgba(56,189,248,.16), rgba(0,0,0,1));
+}
+.film-reel{font-size:2rem; filter:drop-shadow(0 0 10px rgba(250,204,21,.9))}
+.film-reel-text{font-size:.78rem; letter-spacing:.14em; text-transform:uppercase; color:#e5e7eb}
+</style>
+""", unsafe_allow_html=True)
+
+# ------------------------------------------------------------
+# API principal (llamada desde app.py)
+# ------------------------------------------------------------
+
+def render_catalog_tab(df: pd.DataFrame,
+                       page_size: int = 24,
+                       use_tmdb_gallery: bool = True) -> None:
+    """
+    Renderiza la tabla, la galería en cuadrícula y la paginación.
+    - df: dataframe ya filtrado y ordenado desde app.py
+    - page_size: cantidad por página para la galería
+    - use_tmdb_gallery: si True, intenta buscar pósteres en TMDb
+    """
     st.markdown("### 📚 Resultados")
-    view = _apply_search(filtered_df.copy(), search_query)
+    cols_to_show = [c for c in [
+        "Title", "Year", "Your Rating", "IMDb Rating", "Genres", "Directors", "URL"
+    ] if c in df.columns]
+    if cols_to_show:
+        show = df[cols_to_show].copy()
+        if "Year" in show.columns:        show["Year"] = show["Year"].apply(fmt_year)
+        if "Your Rating" in show.columns: show["Your Rating"] = show["Your Rating"].apply(fmt_rating)
+        if "IMDb Rating" in show.columns: show["IMDb Rating"] = show["IMDb Rating"].apply(fmt_rating)
+        st.dataframe(show, use_container_width=True, hide_index=True)
 
-    cols_to_show = [c for c in ["Title","Year","Your Rating","IMDb Rating","Genres","Directors","URL"] if c in view.columns]
-    table_df = view[cols_to_show].copy()
-    disp = table_df.copy()
-    if "Year" in disp: disp["Year"] = disp["Year"].apply(fmt_year)
-    if "Your Rating" in disp: disp["Your Rating"] = disp["Your Rating"].apply(fmt_rating)
-    if "IMDb Rating" in disp: disp["IMDb Rating"] = disp["IMDb Rating"].apply(fmt_rating)
-    st.dataframe(disp, hide_index=True, use_container_width=True)
-
-    # ----------------- Galería -----------------
     st.markdown("---")
-    st.markdown("### 🧱 Galería visual (paginada)")
+    st.markdown("### 🧱 Galería Visual")
 
-    total = len(view)
+    total = len(df)
     if total == 0:
-        st.info("No hay películas para mostrar en la galería.")
+        st.info("No hay películas para la galería con los filtros actuales.")
         return
 
-    page_size = st.slider("Películas por página", 12, 60, 24, 12, key="gallery_page_size")
+    # Controles de paginación
+    left, mid, right = st.columns([1,2,1])
+    with left:
+        page_size = st.slider("Pósters por página", 12, 60, page_size, 12, key="gal_page_size")
     num_pages = max(math.ceil(total / page_size), 1)
-    if "gallery_page" not in st.session_state: st.session_state.gallery_page = 1
-    col_nav1, col_nav2, col_nav3 = st.columns([1,2,1])
-    with col_nav1:
-        if st.button("◀ Anterior", disabled=st.session_state.gallery_page<=1):
-            st.session_state.gallery_page -= 1
-    with col_nav3:
-        if st.button("Siguiente ▶", disabled=st.session_state.gallery_page>=num_pages):
-            st.session_state.gallery_page += 1
-    with col_nav2:
-        st.caption(f"Página {st.session_state.gallery_page} de {num_pages}")
+    st.session_state.setdefault("gal_page", 1)
+    if st.session_state.gal_page > num_pages:
+        st.session_state.gal_page = num_pages
 
-    start = (st.session_state.gallery_page-1) * page_size
+    with right:
+        if st.button("Siguiente ▶", disabled=st.session_state.gal_page >= num_pages):
+            st.session_state.gal_page += 1
+    with left:
+        if st.button("◀ Anterior", disabled=st.session_state.gal_page <= 1):
+            st.session_state.gal_page -= 1
+    with mid:
+        st.caption(f"Página {st.session_state.gal_page} de {num_pages} — Mostrando {page_size} por página")
+
+    # Página actual
+    start = (st.session_state.gal_page - 1) * page_size
     end = start + page_size
-    page_df = view.iloc[start:end].copy()
+    page_df = df.iloc[start:end].copy()
 
-    # Render
-    cards_html = ['<div class="movie-gallery-grid">']
+    # Inyectar CSS de la grilla (una sola vez)
+    _grid_css_once()
+
+    # Construcción de tarjetas
+    cards: List[str] = []
     for _, r in page_df.iterrows():
-        title = r.get("Title","(sin título)")
-        year  = r.get("Year")
-        my    = r.get("Your Rating")
-        imdb  = r.get("IMDb Rating")
+        title = r.get("Title", "Sin título")
+        year = r.get("Year")
+        your_rating = r.get("Your Rating")
+        imdb_rating = r.get("IMDb Rating")
 
-        base_rating = my if pd.notna(my) else imdb
-        border, glow = get_rating_colors(base_rating)
-
-        poster_url, tmdb_rating, tmdb_id = None, None, None
+        poster_url = None
         if use_tmdb_gallery:
-            tmdb_info = get_tmdb_basic_info(title, year)
-            if tmdb_info:
-                poster_url = tmdb_info.get("poster_url")
-                tmdb_rating = tmdb_info.get("vote_average")
-                tmdb_id = tmdb_info.get("id")
+            tmdb = get_tmdb_basic_info(title, year)
+            poster_url = (tmdb or {}).get("poster_url")
 
-        poster_html = (
-            f'<img src="{poster_url}" alt="{title}">' if poster_url else
-            '<div style="width:100%;aspect-ratio:2/3;border:1px dashed #475569;border-radius:12px;display:flex;align-items:center;justify-content:center;">Sin póster</div>'
-        )
-        line_top = []
-        if pd.notna(my):   line_top.append(f"⭐ {fmt_rating(my)}")
-        if pd.notna(imdb): line_top.append(f"IMDb {fmt_rating(imdb)}")
-        if tmdb_rating is not None: line_top.append(f"TMDb {fmt_rating(tmdb_rating)}")
-        meta = " | ".join(line_top) if line_top else "&nbsp;"
+        cards.append(_poster_card_html(title, year, your_rating, imdb_rating, poster_url))
 
-        cards_html.append(
-            f"""
-<div class="poster-card" style="border-color:{border}; box-shadow: 0 0 0 1px rgba(15,23,42,0.9), 0 0 20px {glow};">
-  {poster_html}
-  <h4>{title} {f"({fmt_year(year)})" if pd.notna(year) else ""}</h4>
-  <p>{meta}</p>
-</div>
-"""
-        )
-    cards_html.append("</div>")
-    st.markdown("\n".join(cards_html), unsafe_allow_html=True)
-
-def render_pick_tab(filtered_df: pd.DataFrame, show_trailers: bool, consult_awards: bool):
-    import random
-    st.markdown("### 🎯 Recomendar una película ahora")
-    if filtered_df.empty:
-        st.info("No hay datos bajo los filtros actuales.")
-        return
-    if st.button("Recomendar"):
-        pool = filtered_df.copy()
-        notas = pd.to_numeric(pool.get("Your Rating"), errors="coerce").fillna(0)
-        pesos = (notas + 1).tolist()
-        idx = random.choices(pool.index.tolist(), weights=pesos, k=1)[0]
-        r = pool.loc[idx]
-        title = r.get("Title","(sin título)")
-        year  = r.get("Year")
-        my    = r.get("Your Rating")
-        imdb  = r.get("IMDb Rating")
-        border, glow = get_rating_colors(my if pd.notna(my) else imdb)
-
-        tmdb = get_tmdb_basic_info(title, year)
-        poster_url = tmdb.get("poster_url") if tmdb else None
-        tmdb_rating = tmdb.get("vote_average") if tmdb else None
-        tmdb_id = tmdb.get("id") if tmdb else None
-
-        cols = st.columns([1,2])
-        with cols[0]:
-            if poster_url: st.image(poster_url, use_container_width=True)
-            if show_trailers:
-                yt = get_youtube_trailer_url(title, year)
-                if yt: st.video(yt)
-        with cols[1]:
-            st.markdown(
-                f"""
-<div class="poster-card" style="border-color:{border}; box-shadow: 0 0 0 1px rgba(15,23,42,0.9), 0 0 26px {glow};">
-  <h4 style="margin:.2rem 0 .4rem">{title} {f"({fmt_year(year)})" if pd.notna(year) else ""}</h4>
-  <p>
-    {f"⭐ {fmt_rating(my)} · " if pd.notna(my) else ""}{f"IMDb {fmt_rating(imdb)} · " if pd.notna(imdb) else ""}{f"TMDb {fmt_rating(tmdb_rating)}" if tmdb_rating is not None else ""}
-  </p>
-</div>
-                """,
-                unsafe_allow_html=True
-            )
-
-        if tmdb_id:
-            st.markdown("#### 🌐 Similares (TMDb)")
-            sims = get_tmdb_similar_movies(tmdb_id, max_results=8)
-            if sims:
-                cols = st.columns(4)
-                for i, m in enumerate(sims):
-                    with cols[i%4]:
-                        st.write(f"**{m.get('title','')}** {f'({m.get(\"year\")})' if m.get('year') else ''}")
-                        if m.get("poster_url"):
-                            st.image(m["poster_url"], use_container_width=True)
-                        st.caption(f"TMDb: {fmt_rating(m.get('vote_average'))}")
-            else:
-                st.caption("Sin recomendaciones externas.")
+    html = f'<div class="poster-grid">\n' + "\n".join(cards) + "\n</div>"
+    # IMPORTANTE: renderizar como HTML
+    st.markdown(html, unsafe_allow_html=True)

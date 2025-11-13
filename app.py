@@ -11,9 +11,13 @@ import altair as alt
 import streamlit as st
 
 # ===================== Versión y changelog =====================
-APP_VERSION = "1.2.0"
+APP_VERSION = "1.2.1"
 
 CHANGELOG = {
+    "1.2.1": [
+        "Fix: robustecida la extracción de directores/géneros cuando faltan columnas o hay NaNs.",
+        "Mejor manejo de DF vacío en la carga del catálogo y dataset Óscar.",
+    ],
     "1.2.0": [
         "Óscar: usa Oscar_Data_1927_today.xlsx/csv si existe; fallback a full_data.csv",
         "Óscar: usa Year (YearInt) para filtrar; NomineeIds para entidades; Winner para ganador",
@@ -21,11 +25,6 @@ CHANGELOG = {
         "Añadida vista por año/pósters con categorías y nominados (ganador resaltado)",
         "Lectura robusta y tolerante a columnas faltantes.",
     ],
-    "1.1.3": [
-        "Óscar: se usa exclusivamente full_data.csv (DLu/oscar_data).",
-        "Óscar: ganadores resaltados en verde; tablas y gráficos por NomineeIds.",
-        "Robustez: carga tolerante (on_bad_lines) y columnas ausentes no rompen.",
-    ]
 }
 
 def _parse_ver_tuple(v: str):
@@ -42,7 +41,6 @@ st.set_page_config(
     page_title=f"🎬 Mi catálogo de Películas · v{APP_VERSION}",
     layout="centered",
 )
-
 st.title("🎥 Mi catálogo de películas (IMDb)")
 
 # ----------------- Config APIs externas -----------------
@@ -60,7 +58,7 @@ def normalize_title(s: str) -> str:
     return re.sub(r"[^a-z0-9]+", "", str(s).lower())
 
 def fmt_year(y):
-    if pd.isna(y) or y == -1:
+    if pd.isna(y) or y == -1 or y == "":
         return ""
     try:
         return str(int(float(y)))
@@ -147,7 +145,7 @@ def get_tmdb_similar_movies(tmdb_id, language="es-ES", max_results=10):
     except Exception:
         return []
 
-# ----------------- OMDb awards parser (existing) -----------------
+# ----------------- OMDb awards parser -----------------
 @st.cache_data
 def get_omdb_awards(title, year=None):
     api_key = st.secrets.get("OMDB_API_KEY", None)
@@ -225,7 +223,6 @@ def get_omdb_awards(title, year=None):
         total_wins = int(m_wins.group(1))
     if re.search(r"palme\s+d['’]or", text_lower):
         palme_dor = True
-
     m_osc_nom = re.search(r"nominated\s+for\s+(\d+)\s+oscars?", text_lower)
     if m_osc_nom:
         oscars_nominated = int(m_osc_nom.group(1))
@@ -235,7 +232,11 @@ def get_omdb_awards(title, year=None):
 # ----------------- Carga catálogo de usuario (peliculas.csv u upload) -----------------
 @st.cache_data
 def load_data(file_path_or_buffer):
-    df = pd.read_csv(file_path_or_buffer)
+    try:
+        df = pd.read_csv(file_path_or_buffer)
+    except Exception:
+        # si falla, devolver DF vacío con columnas esperadas
+        return pd.DataFrame(columns=["Title", "Year", "Your Rating", "IMDb Rating", "Genres", "Directors", "URL"])
     # normalizaciones
     if "Your Rating" in df.columns:
         df["Your Rating"] = pd.to_numeric(df["Your Rating"], errors="coerce")
@@ -275,12 +276,11 @@ def find_oscar_file():
         "Oscar_Data_1927_today.csv",
         "Oscar_Data_1927_today.xls",
         "full_data.csv",
-        "full_data.xlsx"
+        "full_data.xlsx",
     ]
     for c in candidates:
         if os.path.exists(c):
             return c
-    # busco en /mnt/data (entorno de Colab/runner)
     alt_paths = [os.path.join("/mnt/data", c) for c in candidates]
     for p in alt_paths:
         if os.path.exists(p):
@@ -289,48 +289,33 @@ def find_oscar_file():
 
 @st.cache_data
 def load_full_data(path_hint=None):
-    """
-    Carga tolerante del dataset de Óscar.
-    Acepta Excel o CSV. Normaliza columnas: Film, Name/Nominee, NomineeIds, Winner, Year.
-    Devuelve DataFrame con columnas añadidas:
-        - YearInt (int)
-        - IsWinner (bool)
-        - NomineeIdsList (list)
-        - NormFilm (normalized title)
-        - CanonCat (CanonicalCategory o Category)
-    """
     if path_hint is None:
         path = find_oscar_file()
     else:
         path = path_hint if os.path.exists(path_hint) else find_oscar_file()
     if path is None:
         return pd.DataFrame()
-
-    # try excel then csv (pandas auto-detection)
     try:
         if str(path).lower().endswith((".xls", ".xlsx")):
             dff = pd.read_excel(path)
         else:
-            # try read_csv with python engine robustly
             dff = pd.read_csv(path, sep=None, engine="python", on_bad_lines="skip")
     except Exception:
         try:
             dff = pd.read_csv(path, on_bad_lines="skip")
         except Exception:
-            # último recurso: leer como excel (pandas intentará)
             try:
                 dff = pd.read_excel(path)
             except Exception:
                 return pd.DataFrame()
 
-    # normalize column names
     dff.columns = [str(c).strip() for c in dff.columns]
     idx = dff.index
 
     def col(name, default=""):
         return dff[name] if name in dff.columns else pd.Series([default] * len(dff), index=idx)
 
-    # canonical category: prefer CanonicalCategory then Class then Category
+    # Canonical category
     if "CanonicalCategory" in dff.columns:
         dff["CanonCat"] = dff["CanonicalCategory"].astype(str)
     elif "Class" in dff.columns:
@@ -351,7 +336,7 @@ def load_full_data(path_hint=None):
     else:
         dff["Nominee"] = ""
 
-    # Year: usar Year (año de la película). Si no está, intentar Ceremony.
+    # Year (usar Year preferentemente)
     if "Year" in dff.columns:
         yr = pd.to_numeric(dff["Year"], errors="coerce")
     elif "year" in dff.columns:
@@ -362,19 +347,17 @@ def load_full_data(path_hint=None):
         yr = pd.Series([None] * len(dff))
     dff["YearInt"] = yr.fillna(-1).astype(int)
 
-    # Winner -> IsWinner boolean
+    # Winner -> IsWinner boolean (varios alias)
     if "Winner" in dff.columns:
         win_raw = dff["Winner"].astype(str).fillna("").str.lower()
     elif "winner" in dff.columns:
         win_raw = dff["winner"].astype(str).fillna("").str.lower()
+    elif "IsWinner" in dff.columns:
+        win_raw = dff["IsWinner"].astype(str).fillna("").str.lower()
+    elif "Won" in dff.columns:
+        win_raw = dff["Won"].astype(str).fillna("").str.lower()
     else:
-        # fallback: maybe there's a column named 'IsWinner' or 'Won' or 'Result'
-        if "IsWinner" in dff.columns:
-            win_raw = dff["IsWinner"].astype(str).fillna("").str.lower()
-        elif "Won" in dff.columns:
-            win_raw = dff["Won"].astype(str).fillna("").str.lower()
-        else:
-            win_raw = pd.Series([""] * len(dff), index=idx)
+        win_raw = pd.Series([""] * len(dff), index=idx)
     dff["IsWinner"] = win_raw.isin(["1", "true", "yes", "winner", "won", "ganador", "ganadora", "True", "TRUE", "yes"])
 
     # NomineeIds -> list
@@ -386,11 +369,9 @@ def load_full_data(path_hint=None):
         base_ids = pd.Series([""] * len(dff), index=idx)
     dff["NomineeIdsList"] = base_ids.apply(lambda s: [x.strip() for x in re.split(r"[;,]", s) if x.strip()])
 
-    # Normalized film for cross-match
+    # Norm film
     dff["NormFilm"] = dff["Film"].apply(normalize_title)
 
-    # keep useful columns only (but keep originals)
-    # return
     return dff
 
 def attach_catalog_to_full(osc_df, my_catalog_df):
@@ -409,8 +390,7 @@ def attach_catalog_to_full(osc_df, my_catalog_df):
     else:
         cat["YearInt"] = -1
     merged = out.merge(cat[["NormTitle", "YearInt", "Your Rating", "IMDb Rating", "URL"]],
-                       left_on=["NormFilm", "YearInt"],
-                       right_on=["NormTitle", "YearInt"], how="left", suffixes=("", "_cat"))
+                       left_on=["NormFilm", "YearInt"], right_on=["NormTitle", "YearInt"], how="left", suffixes=("", "_cat"))
     merged["InMyCatalog"] = merged["URL"].notna()
     merged["MyRating"] = merged.get("Your Rating")
     merged["MyIMDb"] = merged.get("IMDb Rating")
@@ -429,15 +409,15 @@ else:
     try:
         df = load_data("peliculas.csv")
     except Exception:
-        # csv no encontrado -> crear DF vacío pero funcional
         df = pd.DataFrame(columns=["Title", "Year", "Your Rating", "IMDb Rating", "Genres", "Directors", "URL"])
         st.sidebar.info("No se subió 'peliculas.csv' en el repo; la app funcionará sin cruce con tu catálogo.")
 
+# Garantías mínimas
 if "Title" not in df.columns:
-    st.error("El CSV de tu catálogo debe contener una columna 'Title' para funcionar correctamente.")
-    # No hacemos st.stop() — la parte de Óscar puede seguir funcionando independientemente
+    # no detenemos la app, solo informamos; muchas secciones seguirán funcionando
+    st.warning("El CSV de tu catálogo no contiene la columna 'Title'. Algunas funciones estarán limitadas.")
 
-df["NormTitle"] = df.get("Title", "").apply(normalize_title)
+df["NormTitle"] = df.get("Title", "").apply(lambda x: normalize_title(x) if pd.notna(x) else "")
 if "Year" in df.columns:
     try:
         df["YearInt"] = df["Year"].fillna(-1).astype(int)
@@ -446,71 +426,26 @@ if "Year" in df.columns:
 else:
     df["YearInt"] = -1
 
-# ----------------- Tema y estilo (mantengo tu CSS ya usado) -----------------
+# ----------------- Tema y estilo (CSS simplificado) -----------------
 primary_bg = "#020617"
-secondary_bg = "#020617"
 text_color = "#e5e7eb"
 card_bg = "rgba(15,23,42,0.9)"
 accent_color = "#eab308"
-accent_soft = "rgba(234,179,8,0.25)"
 accent_alt = "#38bdf8"
 
 st.markdown(
     f"""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
-
-    :root {{
-        --bg-primary: {primary_bg};
-        --bg-secondary: {secondary_bg};
-        --text-color: {text_color};
-        --card-bg: {card_bg};
-        --accent: {accent_color};
-        --accent-soft: {accent_soft};
-        --accent-alt: {accent_alt};
-        --radius-lg: 12px;
-        --radius-xl: 16px;
-    }}
-
     html, body, .stApp {{
         background: radial-gradient(circle at top left, #0f172a 0%, #020617 40%, #000000 100%);
-        color: var(--text-color);
+        color: {text_color};
         font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
     }}
-
-    .main .block-container {{
-        max-width: 1200px;
-        padding-top: 2.8rem;
-        padding-bottom: 2rem;
-    }}
-
-    [data-testid="stSidebar"] > div:first-child {{
-        background: linear-gradient(180deg, rgba(15,23,42,0.98), rgba(15,23,42,0.90));
-        border-right: 1px solid rgba(148,163,184,0.25);
-    }}
-
-    h1 {{
-        font-weight: 800;
-        font-size: 2.0rem !important;
-        background: linear-gradient(90deg, var(--accent), var(--accent-alt));
-        -webkit-background-clip: text;
-        color: transparent;
-    }}
-
-    .movie-card {{
-        background: radial-gradient(circle at top left, rgba(15,23,42,0.9), rgba(15,23,42,0.85));
-        border-radius: var(--radius-lg);
-        padding: 12px;
-        margin-bottom: 12px;
-        border: 1px solid rgba(148,163,184,0.45);
-    }}
-
-    [data-testid="stDataFrame"] {{
-        border-radius: var(--radius-xl) !important;
-        border: 1px solid rgba(148,163,184,0.6);
-        background: radial-gradient(circle at top left, rgba(15,23,42,0.96), rgba(15,23,42,0.88));
-    }}
-
+    .main .block-container {{ max-width: 1200px; padding-top: 2.8rem; padding-bottom: 2rem; }}
+    h1 {{ font-weight: 800; font-size: 2.0rem !important; background: linear-gradient(90deg, {accent_color}, {accent_alt}); -webkit-background-clip: text; color: transparent; }}
+    .movie-card {{ background: {card_bg}; border-radius: 10px; padding: 12px; margin-bottom: 12px; border: 1px solid rgba(148,163,184,0.12); }}
+    [data-testid="stDataFrame"] {{ border-radius: 12px !important; }}
     </style>
     """, unsafe_allow_html=True
 )
@@ -540,20 +475,42 @@ else:
     year_range = (1900, pd.Timestamp.now().year)
 
 if "Your Rating" in df.columns and df["Your Rating"].notna().any():
-    min_rating = int(df["Your Rating"].min())
-    max_rating = int(df["Your Rating"].max())
+    try:
+        min_rating = int(df["Your Rating"].min())
+        max_rating = int(df["Your Rating"].max())
+    except Exception:
+        min_rating, max_rating = 0, 10
     rating_range = st.sidebar.slider("Mi nota (Your Rating)", min_rating, max_rating, (min_rating, max_rating))
 else:
     rating_range = (0, 10)
 
-all_genres = sorted(set(g for sub in df.get("GenreList", pd.Series([[]]*len(df))) for g in sub if g))
+# all_genres robusto
+if "GenreList" in df.columns:
+    try:
+        all_genres = sorted({g for sub in df["GenreList"].dropna() for g in (sub if isinstance(sub, list) else [sub]) if g})
+    except Exception:
+        all_genres = []
+else:
+    all_genres = []
 selected_genres = st.sidebar.multiselect("Géneros", options=all_genres)
-all_directors = sorted(set(d.strip() for d in df.get("Directors", pd.Series([""]*len(df))) if str(d).strip()))
+
+# all_directors robusto
+if "Directors" in df.columns:
+    all_directors_set = set()
+    for v in df["Directors"].fillna("").astype(str):
+        for part in v.split(","):
+            p = part.strip()
+            if p:
+                all_directors_set.add(p)
+    all_directors = sorted(all_directors_set)
+else:
+    all_directors = []
 selected_directors = st.sidebar.multiselect("Directores", options=all_directors)
+
 order_by = st.sidebar.selectbox("Ordenar por", ["Your Rating", "IMDb Rating", "Year", "Title", "Aleatorio"])
 order_asc = st.sidebar.checkbox("Orden ascendente", value=False)
 
-# Changelog al final de la sidebar
+# changelog en sidebar
 st.sidebar.markdown("---")
 st.sidebar.header("🧾 Versiones")
 with st.sidebar.expander("Ver changelog", expanded=False):
@@ -570,7 +527,7 @@ if "Year" in filtered.columns:
 if "Your Rating" in filtered.columns:
     filtered = filtered[(filtered["Your Rating"] >= rating_range[0]) & (filtered["Your Rating"] <= rating_range[1])]
 if selected_genres:
-    filtered = filtered[filtered["GenreList"].apply(lambda gl: all(g in gl for g in selected_genres))]
+    filtered = filtered[filtered["GenreList"].apply(lambda gl: all(g in gl for g in selected_genres) if isinstance(gl, list) else False)]
 if selected_directors:
     def _matches_any_director(cell):
         if pd.isna(cell):
@@ -602,7 +559,7 @@ if order_by == "Aleatorio":
 elif order_by in filtered_view.columns:
     filtered_view = filtered_view.sort_values(order_by, ascending=order_asc)
 
-# ----------------- Pestañas principales -----------------
+# ----------------- Pestañas -----------------
 tab_catalog, tab_analysis, tab_afi, tab_awards, tab_what = st.tabs(["🎬 Catálogo", "📊 Análisis", "🏆 Lista AFI", "🏆 Premios Óscar", "🎲 ¿Qué ver hoy?"])
 
 # ============================================================
@@ -677,7 +634,6 @@ with tab_catalog:
             directors = row.get("Directors", "")
             url = row.get("URL", "")
             border_color, glow_color = get_rating_colors(nota)
-            poster_html = ""
             if use_tmdb_gallery:
                 tmdb = get_tmdb_basic_info(titulo, year)
                 poster_url = tmdb.get("poster_url") if tmdb else None
@@ -710,7 +666,6 @@ with tab_analysis:
         if filtered.empty:
             st.info("No hay datos bajo los filtros actuales para mostrar gráficos.")
         else:
-            # Películas por año
             col_a, col_b = st.columns(2)
             with col_a:
                 st.markdown("**Películas por año**")
@@ -733,7 +688,6 @@ with tab_analysis:
                 else:
                     st.write("No hay notas mías disponibles.")
 
-            # Otros gráficos (géneros / décadas)
             col_c, col_d = st.columns(2)
             with col_c:
                 st.markdown("**Top géneros (por número de películas)**")
@@ -773,31 +727,35 @@ with tab_afi:
         {"Rank": 1, "Title": "Citizen Kane", "Year": 1941},
         {"Rank": 2, "Title": "The Godfather", "Year": 1972},
         {"Rank": 3, "Title": "Casablanca", "Year": 1942},
-        # ... (puedes añadir/editar la lista si quieres)
     ]
     afi_df = pd.DataFrame(AFI_LIST)
     afi_df["NormTitle"] = afi_df["Title"].apply(normalize_title)
     afi_df["YearInt"] = afi_df["Year"]
     if "NormTitle" not in df.columns:
-        df["NormTitle"] = df.get("Title", "").apply(normalize_title)
+        df["NormTitle"] = df.get("Title", "").apply(lambda x: normalize_title(x) if pd.notna(x) else "")
     if "YearInt" not in df.columns:
         if "Year" in df.columns:
-            df["YearInt"] = df["Year"].fillna(-1).astype(int)
+            try:
+                df["YearInt"] = df["Year"].fillna(-1).astype(int)
+            except Exception:
+                df["YearInt"] = -1
         else:
             df["YearInt"] = -1
+
     def find_match(afi_norm, year, df_full):
         candidates = df_full[df_full["YearInt"] == year]
         def _try(cands):
             if cands.empty:
                 return None
             return cands.iloc[0]
-        m = _try(candidates[candidates["NormTitle"] == afi_norm])
+        m = _try(candidates[candidates["NormTitle"] == afi_norm]) if not candidates.empty else None
         if m is not None:
             return m
-        m = _try(candidates[candidates["NormTitle"].str.contains(afi_norm, regex=False, na=False)])
+        m = _try(candidates[candidates["NormTitle"].str.contains(afi_norm, regex=False, na=False)]) if not candidates.empty else None
         if m is not None:
             return m
         return None
+
     afi_df["Your Rating"] = None
     afi_df["IMDb Rating"] = None
     afi_df["URL"] = None
@@ -809,6 +767,7 @@ with tab_afi:
             afi_df.at[idx, "IMDb Rating"] = match.get("IMDb Rating")
             afi_df.at[idx, "URL"] = match.get("URL")
             afi_df.at[idx, "Seen"] = True
+
     total_afi = len(afi_df)
     seen_afi = int(afi_df["Seen"].sum())
     pct_afi = (seen_afi / total_afi) if total_afi > 0 else 0.0
@@ -829,24 +788,21 @@ with tab_afi:
 # ============================================================
 with tab_awards:
     st.markdown("## 🏆 Premios de la Academia (dataset Óscar)")
-
     oscar_file = find_oscar_file()
     if oscar_file is None:
-        st.info("No encontré 'Oscar_Data_1927_today.xlsx' / 'Oscar_Data_1927_today.csv' ni 'full_data.csv' en el repo. Súbelo a la raíz del repo.")
+        st.info("No encontré 'Oscar_Data_1927_today.xlsx' / 'Oscar_Data_1927_today.csv' ni 'full_data.csv' en la raíz. Súbelo.")
         st.stop()
 
     osc = load_full_data(oscar_file)
     if osc.empty:
-        st.info(f"No pude cargar el archivo de Óscar ({oscar_file}). Revisa el archivo y el formato.")
+        st.info(f"No pude cargar el archivo de Óscar ({oscar_file}). Revisa que tenga columnas mínimas ('Film','Nominee'/'Name','Year','NomineeIds','Winner').")
         st.stop()
 
-    # enlazar con tu catálogo
+    # enlazar con catálogo (si existe)
     osc_x = attach_catalog_to_full(osc, df)
 
     st.markdown("### 🎛️ Filtros (Óscar)")
     c1, c2, c3 = st.columns([1,1,2])
-
-    # Para filtrar por Year (año de la película) - según tu petición
     years_available = sorted([y for y in osc_x["YearInt"].unique() if y and y != -1])
     if years_available:
         min_y, max_y = int(min(years_available)), int(max(years_available))
@@ -858,9 +814,9 @@ with tab_awards:
     with c2:
         cats_sel = st.multiselect("Categorías (canon)", options=all_cats, default=[])
     with c3:
-        q_aw = st.text_input("Buscar (categoría / entidad / película / IDs)", placeholder="Ej: 'BEST PICTURE' o 'Metro-Goldwyn-Mayer'")
+        q_aw = st.text_input("Buscar (categoría / entidad / película / IDs)", placeholder="Ej: 'BEST PICTURE' o 'Spielberg'")
 
-    # Aplicar filtros: usar YearInt como pediste
+    # aplicar filtros (YearInt)
     ff = osc_x[
         (osc_x["YearInt"] >= year_range_osc[0]) &
         (osc_x["YearInt"] <= year_range_osc[1])
@@ -877,7 +833,7 @@ with tab_awards:
         )
         ff = ff[mask]
 
-    # Métricas resumen
+    # métrica resumen
     mcol1, mcol2, mcol3, mcol4 = st.columns(4)
     with mcol1:
         st.metric("Años (rango)", f"{year_range_osc[0]}–{year_range_osc[1]}")
@@ -888,9 +844,9 @@ with tab_awards:
     with mcol4:
         st.metric("Ganadores (filtrados)", int(ff["IsWinner"].sum()))
 
-    st.caption("Usamos el dataset de Óscar encontrado en la raíz. Ganadores marcados por 'Winner'/'IsWinner'. Rankings usan NomineeIds (entidades) y Film+Year para películas.")
+    st.caption("Se usa el dataset encontrado. Usamos Year (YearInt) para filtrar; ganadores = IsWinner.")
 
-    # ---------------- Vista por año: lista de categorías y nominados (tabla) ----------------
+    # Vista por año: tabla
     st.markdown("### 📅 Vista por año: categorías, nominados y ganadores (tabla)")
     years_sorted = sorted(ff["YearInt"].dropna().unique())
     if years_sorted:
@@ -906,7 +862,7 @@ with tab_awards:
             st.info("No hay filas para el año seleccionado con los filtros actuales.")
         else:
             pretty = table_year[["CanonCat", "Nominee", "Film", "YearInt", "IsWinner", "InMyCatalog", "MyRating", "MyIMDb", "CatalogURL"]].copy()
-            pretty = pretty.rename(columns={"CanonCat": "Categoría", "Nominee": "Entidad / Nominee", "Film": "Película", "YearInt": "Año", "IsWinner":"Ganador", "InMyCatalog":"En mi catálogo", "MyRating":"Mi nota", "MyIMDb":"IMDb", "CatalogURL":"IMDb (mía)"})
+            pretty = pretty.rename(columns={"CanonCat":"Categoría","Nominee":"Entidad / Nominee","Film":"Película","YearInt":"Año","IsWinner":"Ganador","InMyCatalog":"En mi catálogo","MyRating":"Mi nota","MyIMDb":"IMDb","CatalogURL":"IMDb (mía)"})
             pretty["En mi catálogo"] = pretty["En mi catálogo"].map({True:"✅", False:"—"})
             pretty["Mi nota"] = pretty["Mi nota"].apply(lambda v: f"{float(v):.1f}" if pd.notna(v) else "")
             pretty["IMDb"] = pretty["IMDb"].apply(lambda v: f"{float(v):.1f}" if pd.notna(v) else "")
@@ -922,13 +878,13 @@ with tab_awards:
             csv_dl = table_year.to_csv(index=False).encode("utf-8")
             st.download_button("⬇️ Descargar nominados/ganadores del año (CSV)", data=csv_dl, file_name=f"oscars_{y_pick}.csv", mime="text/csv")
 
-    # ---------------- Rankings (Nominaciones en el rango seleccionado) ----------------
+    # Rankings (Nominaciones)
     st.markdown("### 🥇 Rankings en el rango seleccionado (Nominaciones al Óscar)")
     colr1, colr2 = st.columns(2)
     with colr1:
-        top_films = (ff.groupby(["Film", "YearInt"]).size().reset_index(name="Nominaciones").sort_values(["Nominaciones", "Film"], ascending=[False, True]).head(20))
+        top_films = (ff.groupby(["Film", "YearInt"]).size().reset_index(name="Nominaciones").sort_values(["Nominaciones","Film"], ascending=[False, True]).head(20))
         if not top_films.empty:
-            tf_disp = top_films.rename(columns={"Film":"Película", "YearInt":"Año"})
+            tf_disp = top_films.rename(columns={"Film":"Película","YearInt":"Año"})
             tf_disp["Año"] = tf_disp["Año"].apply(lambda v: "" if v==-1 or pd.isna(v) else str(int(v)))
             st.dataframe(tf_disp, use_container_width=True, hide_index=True)
         else:
@@ -937,57 +893,46 @@ with tab_awards:
         ent = ff.copy()
         ent = ent.explode("NomineeIdsList")
         ent = ent[ent["NomineeIdsList"].notna() & (ent["NomineeIdsList"] != "")]
-        top_entities = (ent.groupby("NomineeIdsList").size().reset_index(name="Nominaciones").sort_values(["Nominaciones", "NomineeIdsList"], ascending=[False, True]).head(20))
+        top_entities = (ent.groupby("NomineeIdsList").size().reset_index(name="Nominaciones").sort_values(["Nominaciones","NomineeIdsList"], ascending=[False, True]).head(20))
         if not top_entities.empty:
             te_disp = top_entities.rename(columns={"NomineeIdsList":"Entidad (NomineeIds)"})
             st.dataframe(te_disp, use_container_width=True, hide_index=True)
         else:
             st.write("Sin datos de entidades (NomineeIds) para este rango.")
 
-    # ---------------- Vista por año + tarjetas con póster y nominados ----------------
+    # Vista por año + tarjetas con póster y nominados
     st.markdown("### 🎞️ Vista visual por año: categorías con póster y nominados")
     st.caption("Se muestran las categorías del año seleccionado con el póster de la película y la lista de nominados. Ganador resaltado.")
     if 'y_pick' not in locals() or y_pick is None:
         st.info("Selecciona un año en la sección 'Vista por año' para ver la vista visual.")
     else:
         y_for_gallery = int(y_pick)
-        # seleccionar filas de ese año
         rows_year = ff[ff["YearInt"] == y_for_gallery].copy().sort_values(["CanonCat", "IsWinner"], ascending=[True, False])
         if rows_year.empty:
             st.info("No hay datos para ese año.")
         else:
-            # agrupar por categoría (CanonCat) y por film dentro de la categoría
             cats = rows_year["CanonCat"].unique().tolist()
-            # controlador simple: opcion para ordenar categorias alfabéticamente
             sort_alpha = st.checkbox("Ordenar categorías alfabéticamente", value=True, key="aw_sort_alpha")
             if sort_alpha:
                 cats = sorted(cats)
-            # render
             for cat in cats:
                 subset = rows_year[rows_year["CanonCat"] == cat].copy()
                 if subset.empty:
                     continue
                 st.markdown(f"#### {cat}")
-                # si hay varias películas en la categoría (ej. co-ganadores / excepciones) las listamos por film
                 films = subset["Film"].unique().tolist()
-                # grid de cards
                 cards = []
                 for film in films:
                     frows = subset[subset["Film"] == film].copy()
-                    # buscar póster TMDb
                     poster_url = None
                     if use_tmdb_gallery:
                         tm = get_tmdb_basic_info(film, y_for_gallery)
                         if tm:
                             poster_url = tm.get("poster_url")
-                    # construir HTML de tarjeta
                     nominees_html_parts = []
                     for _, r in frows.iterrows():
                         nominee_name = r.get("Nominee") or ""
                         is_w = bool(r.get("IsWinner", False))
-                        in_cat = r.get("InMyCatalog", False)
-                        imdb_my = r.get("MyIMDb", None)
-                        # marcador ganador
                         if is_w:
                             nominees_html_parts.append(f'<div style="font-weight:700;color:#ffd166">🏆 {nominee_name}</div>')
                         else:
@@ -1004,7 +949,6 @@ with tab_awards:
 </div>
 """
                     cards.append(card_html)
-                # mostrar todas las tarjetas de la categoría
                 st.markdown("\n".join(cards), unsafe_allow_html=True)
 
     st.markdown("---")
@@ -1057,12 +1001,7 @@ with tab_what:
                     else:
                         st.write("Sin póster")
                     if show_trailers:
-                        trailer_url = None
-                        if YOUTUBE_API_KEY is not None:
-                            # tratar de buscar vídeo - hay otra función arriba, pero por simplicidad no duplicamos caching
-                            trailer_url = None
-                        if trailer_url:
-                            st.video(trailer_url)
+                        pass
                 with col_info:
                     st.markdown(f"""
 <div class="movie-card" style="border-color:{border_color};box-shadow:0 0 26px {glow_color};margin-bottom:10px">

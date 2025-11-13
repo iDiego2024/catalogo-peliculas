@@ -1,4 +1,3 @@
-# app.py
 import streamlit as st
 import pandas as pd
 import requests
@@ -9,13 +8,13 @@ import math
 from urllib.parse import quote_plus
 
 # ===================== Versión y changelog =====================
-APP_VERSION = "2.2.0"  # súbela cuando publiques cambios
+APP_VERSION = "1.1.1"  # <- súbela cuando publiques cambios
 
 CHANGELOG = {
-    "2.2.0": [
-        "Look & feel dorado mejorado, layout ancho, tablas y tarjetas con glow.",
-        "Versión movida a la barra lateral (no footer).",
-        "Mantiene todas las features del original: filtros, búsqueda, galería TMDb, AFI, Óscar, ¿Qué ver hoy?, análisis.",
+    "1.1.1": [
+        "Galería: botones Anterior/Siguiente también al final.",
+        "Sección de Versiones movida al final de la barra lateral.",
+        "Footer con versión y 'Powered by Diego Leal'.",
     ],
     "1.1.0": [
         "Nueva pestaña 🏆 Premios Óscar: búsqueda, filtros, vista por año→categorías→ganadores, rankings y tendencias.",
@@ -41,14 +40,18 @@ def since(ver: str) -> bool:
 
 st.set_page_config(
     page_title=f"🎬 Mi catálogo de Películas · v{APP_VERSION}",
-    layout="wide"
+    layout="centered"
 )
+
+st.title("🎥 Mi catálogo de películas (IMDb)")
+st.caption(f"Versión **v{APP_VERSION}**")
 
 # ----------------- Config APIs externas -----------------
 
 TMDB_API_KEY = st.secrets.get("TMDB_API_KEY", None)
 TMDB_SEARCH_URL = "https://api.themoviedb.org/3/search/movie"
 TMDB_IMAGE_BASE = "https://image.tmdb.org/t/p/w342"
+
 TMDB_SIMILAR_URL_TEMPLATE = "https://api.themoviedb.org/3/movie/{movie_id}/similar"
 
 YOUTUBE_API_KEY = st.secrets.get("YOUTUBE_API_KEY", None)
@@ -245,7 +248,7 @@ def get_tmdb_basic_info(title, year=None):
         params["year"] = year_int
 
     try:
-        r = requests.get(TMDB_SEARCH_URL, params=params, timeout=4)
+        r = requests.get(TMDB_SEARCH_URL, params=params, timeout=3)
         if r.status_code != 200:
             return None
         data = r.json()
@@ -274,7 +277,7 @@ def get_tmdb_providers(tmdb_id, country="CL"):
 
     try:
         providers_url = f"https://api.themoviedb.org/3/movie/{tmdb_id}/watch/providers"
-        r2 = requests.get(providers_url, params={"api_key": TMDB_API_KEY}, timeout=5)
+        r2 = requests.get(providers_url, params={"api_key": TMDB_API_KEY}, timeout=4)
         if r2.status_code != 200:
             return None
         pdata = r2.json()
@@ -306,7 +309,7 @@ def get_tmdb_similar_movies(tmdb_id, language="es-ES", max_results=10):
     try:
         url = TMDB_SIMILAR_URL_TEMPLATE.format(movie_id=tmdb_id)
         params = {"api_key": TMDB_API_KEY, "language": language, "page": 1}
-        r = requests.get(url, params=params, timeout=5)
+        r = requests.get(url, params=params, timeout=4)
         if r.status_code != 200:
             return []
         data = r.json()
@@ -358,7 +361,7 @@ def get_youtube_trailer_url(title, year=None, language_hint="es"):
     }
 
     try:
-        r = requests.get(YOUTUBE_SEARCH_URL, params=params, timeout=6)
+        r = requests.get(YOUTUBE_SEARCH_URL, params=params, timeout=5)
         if r.status_code != 200:
             return None
         data = r.json()
@@ -392,7 +395,7 @@ def get_omdb_awards(title, year=None):
 
     def _query(params):
         try:
-            r = requests.get(base_url, params=params, timeout=9)
+            r = requests.get(base_url, params=params, timeout=8)
             if r.status_code != 200:
                 return {"error": f"HTTP {r.status_code} desde OMDb."}
             data = r.json()
@@ -463,11 +466,15 @@ def get_omdb_awards(title, year=None):
     total_wins = 0
     total_nominations = 0
 
-    m_osc = re.search(r"won\s+(\d+)\s+oscars?", text_lower) or re.search(r"won\s+(\d+)\s+oscar\b", text_lower)
+    m_osc = re.search(r"won\s+(\d+)\s+oscars?", text_lower)
+    if not m_osc:
+        m_osc = re.search(r"won\s+(\d+)\s+oscar\b", text_lower)
     if m_osc:
         oscars = int(m_osc.group(1))
 
-    m_osc_nom = re.search(r"nominated\s+for\s+(\d+)\s+oscars?", text_lower) or re.search(r"nominated\s+for\s+(\d+)\s+oscar\b", text_lower)
+    m_osc_nom = re.search(r"nominated\s+for\s+(\d+)\s+oscars?", text_lower)
+    if not m_osc_nom:
+        m_osc_nom = re.search(r"nominated\s+for\s+(\d+)\s+oscar\b", text_lower)
     if m_osc_nom:
         oscars_nominated = int(m_osc_nom.group(1))
 
@@ -487,7 +494,9 @@ def get_omdb_awards(title, year=None):
     elif "bafta" in text_lower:
         baftas = 1
 
-    m_globe = re.search(r"won\s+(\d+)[^\.]*golden\s+globes?", text_lower) or re.search(r"won\s+(\d+)[^\.]*golden\s+globe\b", text_lower)
+    m_globe = re.search(r"won\s+(\d+)[^\.]*golden\s+globes?", text_lower)
+    if not m_globe:
+        m_globe = re.search(r"won\s+(\d+)[^\.]*golden\s+globe\b", text_lower)
     if m_globe:
         golden_globes = int(m_globe.group(1))
     elif "golden globe" in text_lower:
@@ -745,6 +754,38 @@ def attach_my_catalog_cols(winners_df, my_catalog_df):
     merged = merged.drop(columns=["NormTitle", "YearInt", "Your Rating", "IMDb Rating", "URL"], errors="ignore")
     return merged
 
+# ----------------- Carga de datos -----------------
+
+st.sidebar.header("📂 Datos")
+
+uploaded = st.sidebar.file_uploader(
+    "Subo mi CSV de IMDb (si no, se usa peliculas.csv del repo)",
+    type=["csv"]
+)
+
+if uploaded is not None:
+    df = load_data(uploaded)
+else:
+    try:
+        df = load_data("peliculas.csv")
+    except FileNotFoundError:
+        st.error(
+            "No se encontró 'peliculas.csv' en el repositorio y no se subió archivo.\n\n"
+            "Sube tu CSV de IMDb desde la barra lateral para continuar."
+        )
+        st.stop()
+
+if "Title" not in df.columns:
+    st.error("El CSV debe contener una columna 'Title' para poder funcionar.")
+    st.stop()
+
+df["NormTitle"] = df["Title"].apply(normalize_title)
+
+if "Year" in df.columns:
+    df["YearInt"] = df["Year"].fillna(-1).astype(int)
+else:
+    df["YearInt"] = -1
+
 # ----------------- Tema oscuro + CSS -----------------
 
 primary_bg = "#020617"
@@ -779,13 +820,23 @@ st.markdown(
     }}
 
     .main .block-container {{
-        max-width: 1500px;
-        padding-top: 2.0rem;
-        padding-bottom: 2rem;
+        max-width: 1200px;
+        padding-top: 3.0rem;
+        padding-bottom: 3rem;
     }}
 
-    @media (min-width: 1700px) {{
-        .main .block-container {{ max-width: 1600px; }}
+    @media (min-width: 1500px) {{
+        .main .block-container {{
+            max-width: 1400px;
+        }}
+    }}
+
+    @media (max-width: 900px) {{
+        .main .block-container {{
+            max-width: 100%;
+            padding-left: 0.75rem;
+            padding-right: 0.75rem;
+        }}
     }}
 
     [data-testid="stSidebar"] > div:first-child {{
@@ -799,25 +850,41 @@ st.markdown(
         font-size: 0.9rem;
     }}
 
-    h1.page-title {{
+    h1, h2, h3, h4 {{
+        font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+        letter-spacing: 0.04em;
+    }}
+
+    h1 {{
         text-transform: uppercase;
         font-weight: 800;
         font-size: 2.0rem !important;
         background: linear-gradient(90deg, var(--accent), var(--accent-alt));
         -webkit-background-clip: text;
         color: transparent;
-        margin-top: 0.2rem;
-        margin-bottom: 0.2rem;
+        margin-top: 1.2rem;
+        margin-bottom: 0.6rem;
         line-height: 1.25;
         text-align: left;
-        letter-spacing: .04em;
     }}
 
-    .subtitle-line {{
-        color:#9ca3af;
-        font-size:.92rem;
-        letter-spacing:.02em;
-        margin-bottom:.4rem;
+    h2 {{
+        font-weight: 700;
+        font-size: 1.4rem !important;
+        margin-top: 1.5rem;
+        margin-bottom: 0.25rem;
+    }}
+
+    .stMarkdown, .stText, .stCaption, p {{
+        color: var(--text-color);
+    }}
+
+    a {{
+        color: var(--accent-alt) !important;
+        text-decoration: none;
+    }}
+    a:hover {{
+        text-decoration: underline;
     }}
 
     [data-testid="stMetric"] {{
@@ -829,30 +896,25 @@ st.markdown(
         backdrop-filter: blur(10px);
     }}
 
-    [data-testid="stDataFrame"] {{
-        border-radius: var(--radius-xl) !important;
-        border: 1px solid rgba(148,163,184,0.6);
-        background: radial-gradient(circle at top left, rgba(15,23,42,0.96), rgba(15,23,42,0.88));
-        box-shadow:
-            0 0 0 1px rgba(15,23,42,0.9),
-            0 22px 45px rgba(15,23,42,0.95);
-        overflow: hidden;
-    }}
-
-    [data-testid="stDataFrame"] * {{
-        color: #e5e7eb !important;
-        font-size: 0.85rem;
-    }}
-
-    [data-testid="stDataFrame"] thead tr {{
-        background: linear-gradient(90deg, rgba(15,23,42,0.95), rgba(30,64,175,0.85));
+    [data-testid="stMetricLabel"], [data-testid="stMetricDelta"] {{
+        color: #9ca3af !important;
+        font-size: 0.75rem !important;
         text-transform: uppercase;
-        letter-spacing: 0.08em;
+        letter-spacing: 0.12em;
     }}
 
-    [data-testid="stDataFrame"] tbody tr:hover {{
-        background-color: rgba(234,179,8,0.12) !important;
-        transition: background-color 0.15s ease-out;
+    [data-testid="stMetricValue"] {{
+        color: #e5e7eb !important;
+        font-weight: 700;
+        font-size: 1.4rem !important;
+    }}
+
+    [data-testid="stExpander"] {{
+        border-radius: var(--radius-xl) !important;
+        border: 1px solid rgba(148,163,184,0.5);
+        background: radial-gradient(circle at top left, rgba(15,23,42,0.98), rgba(15,23,42,0.85));
+        margin-bottom: 1rem;
+        box-shadow: 0 12px 30px rgba(15,23,42,0.7);
     }}
 
     button[kind="secondary"], button[kind="primary"], .stButton > button {{
@@ -876,35 +938,63 @@ st.markdown(
             0 0 26px rgba(250,204,21,0.75);
     }}
 
-    /* Galería */
+    .movie-card {{
+        background: radial-gradient(circle at top left, rgba(15,23,42,0.9), rgba(15,23,42,0.85));
+        border-radius: var(--radius-lg);
+        padding: 14px 14px 12px 14px;
+        margin-bottom: 14px;
+        border: 1px solid rgba(148,163,184,0.45);
+        box-shadow: 0 18px 40px rgba(15,23,42,0.8);
+        backdrop-filter: blur(12px);
+        position: relative;
+        overflow: hidden;
+        transition: all 0.16s ease-out;
+    }}
+
+    .movie-card-grid {{
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        gap: 0.4rem;
+    }}
+
+    .movie-card-grid:hover {{
+        transform: translateY(-4px) scale(1.01);
+        box-shadow:
+            0 0 0 1px rgba(250,204,21,0.7),
+            0 0 32px rgba(250,204,21,0.85);
+        border-color: #facc15 !important;
+    }}
+
+    .movie-title {{
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        font-size: 0.86rem;
+        margin-bottom: 2px;
+        color: #f9fafb;
+    }}
+
+    .movie-sub {{
+        font-size: 0.78rem;
+        line-height: 1.35;
+        color: #cbd5f5;
+    }}
+
     .movie-gallery-grid {{
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
         gap: 18px;
         margin-top: 0.7rem;
     }}
+
     @media (max-width: 900px) {{
         .movie-gallery-grid {{
             grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
             gap: 14px;
         }}
     }}
-    .movie-card {{
-        background: radial-gradient(circle at top left, rgba(15,23,42,0.9), rgba(15,23,42,0.85));
-        border-radius: var(--radius-lg);
-        padding: 14px 14px 12px 14px;
-        border: 1px solid rgba(148,163,184,0.45);
-        box-shadow: 0 18px 40px rgba(15,23,42,0.8);
-        backdrop-filter: blur(12px);
-        transition: all 0.16s ease-out;
-    }}
-    .movie-card:hover {{
-        transform: translateY(-3px) scale(1.01);
-        box-shadow:
-            0 0 0 1px rgba(250,204,21,0.7),
-            0 0 28px rgba(250,204,21,0.8);
-        border-color: #facc15 !important;
-    }}
+
     .movie-poster-frame {{
         width: 100%;
         aspect-ratio: 2 / 3;
@@ -912,64 +1002,79 @@ st.markdown(
         overflow: hidden;
         background: radial-gradient(circle at top, #020617 0%, #000000 55%, #020617 100%);
         border: 1px solid rgba(148,163,184,0.5);
+        position: relative;
         box-shadow: 0 14px 30px rgba(0,0,0,0.85);
     }}
-    .movie-poster-img {{
-        width: 100%; height: 100%; object-fit: cover; display:block;
-        transform-origin: center; transition: transform .25s ease-out;
-    }}
-    .movie-card:hover .movie-poster-img {{ transform: scale(1.03); }}
-    .movie-poster-placeholder {{
-        width:100%; height:100%;
-        display:flex; flex-direction:column; align-items:center; justify-content:center;
-        background:
-          radial-gradient(circle at 15% 0%, rgba(250,204,21,0.12), rgba(15,23,42,1)),
-          radial-gradient(circle at 85% 100%, rgba(56,189,248,0.16), rgba(0,0,0,1));
-    }}
-    .film-reel-icon {{ font-size:2.2rem; filter: drop-shadow(0 0 12px rgba(250,204,21,0.85)); margin-bottom:.25rem; }}
-    .film-reel-text {{ font-size:.78rem; text-transform:uppercase; letter-spacing:.16em; color:#e5e7eb; opacity:.95; }}
 
-    .movie-title {{
-        font-weight: 700; letter-spacing: .04em;
-        text-transform: uppercase; font-size: .9rem; margin:.45rem 0 .15rem 0; color:#f9fafb;
+    .movie-poster-img {{
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
+        transform-origin: center;
+        transition: transform 0.25s ease-out;
     }}
-    .movie-sub {{ font-size: .82rem; line-height: 1.38; color:#cbd5f5; }}
+
+    .movie-card-grid:hover .movie-poster-img {{
+        transform: scale(1.03);
+    }}
+
+    .movie-poster-placeholder {{
+        width: 100%;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        background:
+            radial-gradient(circle at 15% 0%, rgba(250,204,21,0.12), rgba(15,23,42,1)),
+            radial-gradient(circle at 85% 100%, rgba(56,189,248,0.16), rgba(0,0,0,1));
+        position: relative;
+    }}
+
+    .film-reel-icon {{
+        font-size: 2.2rem;
+        filter: drop-shadow(0 0 12px rgba(250,204,21,0.85));
+        margin-bottom: 0.25rem;
+    }}
+
+    .film-reel-text {{
+        font-size: 0.78rem;
+        text-transform: uppercase;
+        letter-spacing: 0.16em;
+        color: #e5e7eb;
+        opacity: 0.95;
+    }}
+
+    [data-testid="stDataFrame"] {{
+        border-radius: var(--radius-xl) !important;
+        border: 1px solid rgba(148,163,184,0.6);
+        background: radial-gradient(circle at top left, rgba(15,23,42,0.96), rgba(15,23,42,0.88));
+        box-shadow:
+            0 0 0 1px rgba(15,23,42,0.9),
+            0 22px 45px rgba(15,23,42,0.95);
+        overflow: hidden;
+    }}
+
+    [data-testid="stDataFrame"] * {{
+        color: #e5e7eb !important;
+        font-size: 0.82rem;
+    }}
+
+    [data-testid="stDataFrame"] thead tr {{
+        background: linear-gradient(90deg, rgba(15,23,42,0.95), rgba(30,64,175,0.85));
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+    }}
+
+    [data-testid="stDataFrame"] tbody tr:hover {{
+        background-color: rgba(234,179,8,0.12) !important;
+        transition: background-color 0.15s ease-out;
+    }}
     </style>
     """,
     unsafe_allow_html=True,
 )
-
-# ----------------- Carga de datos -----------------
-
-st.sidebar.header("📂 Datos")
-
-uploaded = st.sidebar.file_uploader(
-    "Sube tu CSV de IMDb (si no, se usa peliculas.csv del repo)",
-    type=["csv"]
-)
-
-if uploaded is not None:
-    df = load_data(uploaded)
-else:
-    try:
-        df = load_data("peliculas.csv")
-    except FileNotFoundError:
-        st.error(
-            "No se encontró 'peliculas.csv' en el repositorio y no se subió archivo.\n\n"
-            "Sube tu CSV de IMDb desde la barra lateral para continuar."
-        )
-        st.stop()
-
-if "Title" not in df.columns:
-    st.error("El CSV debe contener una columna 'Title' para poder funcionar.")
-    st.stop()
-
-df["NormTitle"] = df["Title"].apply(normalize_title)
-
-if "Year" in df.columns:
-    df["YearInt"] = df["Year"].fillna(-1).astype(int)
-else:
-    df["YearInt"] = -1
 
 # ----------------- Opciones de visualización -----------------
 
@@ -1000,16 +1105,6 @@ if show_awards:
     st.sidebar.caption(
         "⚠ Consultar premios para muchas películas puede hacer la app más lenta en la primera carga."
     )
-
-# ---- Changelog y versión en la barra lateral ----
-st.sidebar.header("🧾 Versiones")
-st.sidebar.caption(f"Versión **v{APP_VERSION}**")
-with st.sidebar.expander("Ver changelog", expanded=False):
-    for ver, notes in CHANGELOG.items():
-        st.markdown(f"**v{ver}**")
-        for n in notes:
-            st.markdown(f"- {n}")
-        st.markdown("---")
 
 # ----------------- Filtros (sidebar) -----------------
 
@@ -1064,6 +1159,16 @@ order_by = st.sidebar.selectbox(
 )
 order_asc = st.sidebar.checkbox("Orden ascendente", value=False)
 
+# ---- Changelog al FINAL de la barra lateral ----
+st.sidebar.markdown("---")
+st.sidebar.header("🧾 Versiones")
+with st.sidebar.expander("Ver changelog", expanded=False):
+    for ver, notes in CHANGELOG.items():
+        st.markdown(f"**v{ver}**")
+        for n in notes:
+            st.markdown(f"- {n}")
+        st.markdown("---")
+
 # ----------------- Aplicar filtros básicos -----------------
 
 filtered = df.copy()
@@ -1097,21 +1202,11 @@ if selected_directors:
 
     filtered = filtered[filtered["Directors"].apply(_matches_any_director)]
 
-# ----------------- CABECERA (título + bajada con filtros activos) -----------------
-
-st.markdown(
-    "<h1 class='page-title'>Mi catálogo de películas (IMDb)</h1>",
-    unsafe_allow_html=True
-)
-st.markdown(
-    f"""
-    <div class="subtitle-line">
-      Filtros activos → Años: {year_range[0]}–{year_range[1]} | Mi nota: {rating_range[0]}–{rating_range[1]} | 
-      Géneros: {', '.join(selected_genres) if selected_genres else 'Todos'} | 
-      Directores: {', '.join(selected_directors) if selected_directors else 'Todos'}
-    </div>
-    """,
-    unsafe_allow_html=True
+st.caption(
+    f"Filtros activos → Años: {year_range[0]}–{year_range[1]} | "
+    f"Mi nota: {rating_range[0]}–{rating_range[1]} | "
+    f"Géneros: {', '.join(selected_genres) if selected_genres else 'Todos'} | "
+    f"Directores: {', '.join(selected_directors) if selected_directors else 'Todos'}"
 )
 
 # ----------------- Helpers de formato -----------------
@@ -1254,17 +1349,18 @@ with tab_catalog:
         if st.session_state.gallery_current_page < 1:
             st.session_state.gallery_current_page = 1
 
+        # ----------- NAV SUPERIOR -----------
         col_nav1, col_nav2, col_nav3 = st.columns([1, 2, 1])
 
         with col_nav1:
-            prev_disabled = st.session_state.gallery_current_page <= 1
-            if st.button("◀ Anterior", disabled=prev_disabled, key="gallery_prev"):
+            prev_disabled_top = st.session_state.gallery_current_page <= 1
+            if st.button("◀ Anterior", disabled=prev_disabled_top, key="gallery_prev_top"):
                 if st.session_state.gallery_current_page > 1:
                     st.session_state.gallery_current_page -= 1
 
         with col_nav3:
-            next_disabled = st.session_state.gallery_current_page >= num_pages
-            if st.button("Siguiente ▶", disabled=next_disabled, key="gallery_next"):
+            next_disabled_top = st.session_state.gallery_current_page >= num_pages
+            if st.button("Siguiente ▶", disabled=next_disabled_top, key="gallery_next_top"):
                 if st.session_state.gallery_current_page < num_pages:
                     st.session_state.gallery_current_page += 1
 
@@ -1417,7 +1513,7 @@ with tab_catalog:
             )
 
             card_html = f"""
-<div class="movie-card" style="
+<div class="movie-card movie-card-grid" style="
     border-color: {border_color};
     box-shadow:
         0 0 0 1px rgba(15,23,42,0.9),
@@ -1444,6 +1540,27 @@ with tab_catalog:
         cards_html.append("</div>")
         gallery_html = "\n".join(cards_html)
         st.markdown(gallery_html, unsafe_allow_html=True)
+
+        # ----------- NAV INFERIOR -----------
+        st.markdown("")
+        col_navb1, col_navb2, col_navb3 = st.columns([1, 2, 1])
+
+        with col_navb1:
+            prev_disabled_bottom = st.session_state.gallery_current_page <= 1
+            if st.button("◀ Anterior", disabled=prev_disabled_bottom, key="gallery_prev_bottom"):
+                if st.session_state.gallery_current_page > 1:
+                    st.session_state.gallery_current_page -= 1
+
+        with col_navb3:
+            next_disabled_bottom = st.session_state.gallery_current_page >= num_pages
+            if st.button("Siguiente ▶", disabled=next_disabled_bottom, key="gallery_next_bottom"):
+                if st.session_state.gallery_current_page < num_pages:
+                    st.session_state.gallery_current_page += 1
+
+        with col_navb2:
+            st.caption(
+                f"Página {st.session_state.gallery_current_page} de {num_pages}"
+            )
 
     # ===================== MIS FAVORITAS =====================
 
@@ -2658,3 +2775,15 @@ with tab_what:
                 st.write("No tengo notas suficientes para sugerencias.")
         else:
             st.write("No se encontró la columna 'Your Rating' en el CSV.")
+
+# ===================== FOOTER =====================
+
+st.markdown("---")
+st.markdown(
+    f"""
+    <div style="text-align:center; opacity:0.9; font-size:0.9rem;">
+        <span>v{APP_VERSION} · Powered by <b>Diego Leal</b></span>
+    </div>
+    """,
+    unsafe_allow_html=True
+)

@@ -15,50 +15,7 @@ def _grid_css_once():
     if "grid_css_injected" in st.session_state:
         return
     st.session_state["grid_css_injected"] = True
-    st.markdown("""
-<style>
-.poster-grid{
-  display:grid;
-  grid-template-columns:repeat(auto-fit,minmax(210px,1fr));
-  gap:18px; width:100%;
-}
-@media (max-width:900px){
-  .poster-grid{grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;}
-}
-.poster-card{
-  background: radial-gradient(circle at top left, rgba(15,23,42,.90), rgba(15,23,42,.82));
-  border:1px solid rgba(148,163,184,.45);
-  border-radius:14px; padding:12px;
-  transition:transform .15s, box-shadow .15s, border-color .15s;
-}
-.poster-card:hover{
-  transform:translateY(-3px) scale(1.01);
-  border-color:#facc15;
-  box-shadow:0 0 0 1px rgba(250,204,21,.7), 0 0 28px rgba(250,204,21,.8);
-}
-.poster-card h4{
-  margin:.4rem 0 .1rem 0; font-weight:700; letter-spacing:.02em;
-  font-size:.92rem; color:#f9fafb;
-}
-.poster-card p{ margin:0; color:#cbd5f5; font-size:.82rem; }
-.poster-frame{
-  width:100%; aspect-ratio:2/3; border-radius:12px; overflow:hidden;
-  border:1px solid rgba(148,163,184,.5);
-  background: radial-gradient(circle at top, #020617 0%, #000 55%, #020617 100%);
-  box-shadow:0 14px 30px rgba(0,0,0,.85);
-}
-.poster-img{ width:100%; height:100%; object-fit:cover; display:block; transition:transform .25s; }
-.poster-card:hover .poster-img{ transform:scale(1.03); }
-.poster-placeholder{
-  width:100%; height:100%; display:flex; flex-direction:column;
-  align-items:center; justify-content:center;
-  background:radial-gradient(circle at 15% 0%, rgba(250,204,21,.12), rgba(15,23,42,1)),
-            radial-gradient(circle at 85% 100%, rgba(56,189,248,.16), rgba(0,0,0,1));
-}
-.film-reel{font-size:2rem; filter:drop-shadow(0 0 10px rgba(250,204,21,.9))}
-.film-reel-text{font-size:.78rem; letter-spacing:.14em; text-transform:uppercase; color:#e5e7eb}
-</style>
-""", unsafe_allow_html=True)
+    # (El CSS principal ya viene desde apply_theme_and_css)
 
 def _poster_card_html(title: str, year, your_rating, imdb_rating, poster_url: Optional[str]) -> str:
     base = your_rating if pd.notna(your_rating) else imdb_rating
@@ -82,6 +39,7 @@ def _poster_card_html(title: str, year, your_rating, imdb_rating, poster_url: Op
 </div>"""
 
 def render_catalog_tab(df: pd.DataFrame, page_size: int = 24, use_tmdb_gallery: bool = True) -> None:
+    # Tabla
     st.markdown("### 📚 Resultados")
     cols = [c for c in ["Title","Year","Your Rating","IMDb Rating","Genres","Directors","URL"] if c in df.columns]
     if cols:
@@ -91,6 +49,7 @@ def render_catalog_tab(df: pd.DataFrame, page_size: int = 24, use_tmdb_gallery: 
         if "IMDb Rating" in show.columns: show["IMDb Rating"] = show["IMDb Rating"].apply(fmt_rating)
         st.dataframe(show, use_container_width=True, hide_index=True)
 
+    # Galería
     st.markdown("---")
     st.markdown("### 🧱 Galería Visual")
 

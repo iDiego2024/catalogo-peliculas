@@ -5,12 +5,26 @@ import random
 import altair as alt
 import re
 import math
+import time
+import io
 from urllib.parse import quote_plus
 
 # ===================== Versión y changelog =====================
-APP_VERSION = "1.1.4"  # <- súbela cuando publiques cambios
+APP_VERSION = "1.2.0"  # <- súbela cuando publiques cambios
 
 CHANGELOG = {
+    "1.2.0": [
+        "Bugfix: cálculo de Diff (Mi − IMDb) corregido en 'Películas infravaloradas'.",
+        "AFI: eliminación del duplicado de 'Tootsie' (rank 91).",
+        "Rendimiento: batching por página para TMDb y toggle para providers.",
+        "Rendimiento: TTL en caches de APIs (TMDb/OMDb/YouTube).",
+        "OMDb: backoff suave opcional en lotes grandes.",
+        "UX: reset de página de galería al cambiar filtros/búsqueda.",
+        "UX: persistencia de filtros en URL (experimental_* query params).",
+        "Accesibilidad: alt-text consistente en pósters.",
+        "Óscar: cruce con catálogo tolerante a desfaces de año (±1).",
+        "Mensajes de secrets claros si faltan API keys."
+    ],
     "1.1.4": [
         "Óscar: ahora se usa Oscar_Data_1927_today.xlsx como fuente principal.",
         "Óscar: filtros basados en el año de la película (Year), no en la ceremonia.",
@@ -66,14 +80,12 @@ st.set_page_config(
 )
 
 st.title("🎥 Mi catálogo de películas (IMDb)")
-# (Se elimina el caption de versión en cabecera; la versión sólo aparece en el footer)
 
 # ----------------- Config APIs externas -----------------
 
 TMDB_API_KEY = st.secrets.get("TMDB_API_KEY", None)
 TMDB_SEARCH_URL = "https://api.themoviedb.org/3/search/movie"
 TMDB_IMAGE_BASE = "https://image.tmdb.org/t/p/w342"
-
 TMDB_SIMILAR_URL_TEMPLATE = "https://api.themoviedb.org/3/movie/{movie_id}/similar"
 
 YOUTUBE_API_KEY = st.secrets.get("YOUTUBE_API_KEY", None)
@@ -172,7 +184,7 @@ AFI_LIST = [
     {"Rank": 88, "Title": "The Sixth Sense", "Year": 1999},
     {"Rank": 89, "Title": "Swing Time", "Year": 1936},
     {"Rank": 90, "Title": "Sophie's Choice", "Year": 1982},
-    {"Rank": 91, "Title": "Tootsie", "Year": 1982},
+    # Rank 91 corregido: se elimina el duplicado de "Tootsie".
     {"Rank": 92, "Title": "Goodfellas", "Year": 1990},
     {"Rank": 93, "Title": "The French Connection", "Year": 1971},
     {"Rank": 94, "Title": "Pulp Fiction", "Year": 1994},
@@ -183,6 +195,8 @@ AFI_LIST = [
     {"Rank": 99, "Title": "Toy Story", "Year": 1995},
     {"Rank": 100, "Title": "Ben-Hur", "Year": 1959},
 ]
+# En caso de que alguien reintroduzca el duplicado sin querer:
+AFI_LIST = [x for i, x in enumerate(AFI_LIST) if not (x.get("Rank")==91 and x.get("Title")=="Tootsie")]
 
 def normalize_title(s: str) -> str:
     """Normaliza un título para compararlo (minúsculas, sin espacios ni signos)."""
@@ -191,8 +205,17 @@ def normalize_title(s: str) -> str:
 # ----------------- Funciones auxiliares (catálogo y APIs) -----------------
 
 @st.cache_data
+def _read_csv_any(file_path_or_buffer):
+    """Lee CSV desde path o UploadedFile, devolviendo DataFrame."""
+    if hasattr(file_path_or_buffer, "getvalue"):
+        content = file_path_or_buffer.getvalue()
+        buf = io.BytesIO(content)
+        return pd.read_csv(buf)
+    return pd.read_csv(file_path_or_buffer)
+
+@st.cache_data
 def load_data(file_path_or_buffer):
-    df = pd.read_csv(file_path_or_buffer)
+    df = _read_csv_any(file_path_or_buffer)
 
     if "Your Rating" in df.columns:
         df["Your Rating"] = pd.to_numeric(df["Your Rating"], errors="coerce")
@@ -254,7 +277,7 @@ def _coerce_year_for_tmdb(year):
     except Exception:
         return None
 
-@st.cache_data
+@st.cache_data(ttl=6*60*60)
 def get_tmdb_basic_info(title, year=None):
     """Info básica TMDb (id/poster/vote_average) en una sola búsqueda."""
     if TMDB_API_KEY is None:
@@ -291,7 +314,7 @@ def get_tmdb_basic_info(title, year=None):
     except Exception:
         return None
 
-@st.cache_data
+@st.cache_data(ttl=6*60*60)
 def get_tmdb_providers(tmdb_id, country="CL"):
     """Streaming desde TMDb watch/providers para un país."""
     if TMDB_API_KEY is None or not tmdb_id:
@@ -323,7 +346,7 @@ def get_tmdb_providers(tmdb_id, country="CL"):
     except Exception:
         return None
 
-@st.cache_data
+@st.cache_data(ttl=24*60*60)
 def get_tmdb_similar_movies(tmdb_id, language="es-ES", max_results=10):
     """Películas similares desde TMDb."""
     if TMDB_API_KEY is None or not tmdb_id:
@@ -357,7 +380,7 @@ def get_tmdb_similar_movies(tmdb_id, language="es-ES", max_results=10):
     except Exception:
         return []
 
-@st.cache_data
+@st.cache_data(ttl=24*60*60)
 def get_youtube_trailer_url(title, year=None, language_hint="es"):
     """URL de YouTube del primer resultado de tráiler."""
     if YOUTUBE_API_KEY is None:
@@ -365,7 +388,7 @@ def get_youtube_trailer_url(title, year=None, language_hint="es"):
     if not title or pd.isna(title):
         return None
 
-    q = f"{title} trailer"
+    q = f"{title} trailer {language_hint}"
     try:
         if year is not None and not pd.isna(year):
             q += f" {int(float(year))}"
@@ -395,9 +418,9 @@ def get_youtube_trailer_url(title, year=None, language_hint="es"):
     except Exception:
         return None
 
-@st.cache_data
-def get_omdb_awards(title, year=None):
-    """Info de premios desde OMDb (texto + parseo básico)."""
+@st.cache_data(ttl=24*60*60)
+def get_omdb_awards(title, year=None, _sleep=0.0):
+    """Info de premios desde OMDb (texto + parseo básico). _sleep para backoff suave."""
     api_key = st.secrets.get("OMDB_API_KEY", None)
     if api_key is None:
         return {"error": "OMDB_API_KEY no está configurada en st.secrets."}
@@ -415,7 +438,9 @@ def get_omdb_awards(title, year=None):
     except Exception:
         year_int = None
 
-    def _query(params):
+    def _query(params, sleep_time=0.0):
+        if sleep_time > 0:
+            time.sleep(sleep_time)
         try:
             r = requests.get(base_url, params=params, timeout=8)
             if r.status_code != 200:
@@ -434,7 +459,7 @@ def get_omdb_awards(title, year=None):
         params = {"apikey": api_key, "t": t, "type": "movie"}
         if year_int:
             params["y"] = year_int
-        candidate = _query(params)
+        candidate = _query(params, sleep_time=_sleep)
         if candidate is None:
             continue
         if "error" in candidate:
@@ -447,12 +472,12 @@ def get_omdb_awards(title, year=None):
         params = {"apikey": api_key, "s": simple_title, "type": "movie"}
         if year_int:
             params["y"] = year_int
-        search = _query(params)
+        search = _query(params, sleep_time=_sleep)
         if search and "error" not in search and "Search" in search:
             best = search["Search"][0]
             imdb_id = best.get("imdbID")
             if imdb_id:
-                data = _query({"apikey": api_key, "i": imdb_id})
+                data = _query({"apikey": api_key, "i": imdb_id}, sleep_time=_sleep)
                 if isinstance(data, dict) and "error" in data:
                     last_error = data["error"]
         elif search and "error" in search:
@@ -488,23 +513,15 @@ def get_omdb_awards(title, year=None):
     total_wins = 0
     total_nominations = 0
 
-    m_osc = re.search(r"won\s+(\d+)\s+oscars?", text_lower)
-    if not m_osc:
-        m_osc = re.search(r"won\s+(\d+)\s+oscar\b", text_lower)
+    m_osc = re.search(r"won\s+(\d+)\s+oscars?", text_lower) or re.search(r"won\s+(\d+)\s+oscar\b", text_lower)
     if m_osc:
         oscars = int(m_osc.group(1))
 
-    m_osc_nom = re.search(r"nominated\s+for\s+(\d+)\s+oscars?", text_lower)
-    if not m_osc_nom:
-        m_osc_nom = re.search(r"nominated\s+for\s+(\d+)\s+oscar\b", text_lower)
+    m_osc_nom = re.search(r"nominated\s+for\s+(\d+)\s+oscars?", text_lower) or re.search(r"nominated\s+for\s+(\d+)\s+oscar\b", text_lower)
     if m_osc_nom:
         oscars_nominated = int(m_osc_nom.group(1))
 
-    for pat in [
-        r"won\s+(\d+)\s+primetime\s+emmys?",
-        r"won\s+(\d+)\s+emmys?",
-        r"won\s+(\d+)\s+emmy\b",
-    ]:
+    for pat in [r"won\s+(\d+)\s+primetime\s+emmys?", r"won\s+(\d+)\s+emmys?", r"won\s+(\d+)\s+emmy\b"]:
         m = re.search(pat, text_lower)
         if m:
             emmys = int(m.group(1))
@@ -516,9 +533,7 @@ def get_omdb_awards(title, year=None):
     elif "bafta" in text_lower:
         baftas = 1
 
-    m_globe = re.search(r"won\s+(\d+)[^\.]*golden\s+globes?", text_lower)
-    if not m_globe:
-        m_globe = re.search(r"won\s+(\d+)[^\.]*golden\s+globe\b", text_lower)
+    m_globe = re.search(r"won\s+(\d+)[^\.]*golden\s+globes?", text_lower) or re.search(r"won\s+(\d+)[^\.]*golden\s+globe\b", text_lower)
     if m_globe:
         golden_globes = int(m_globe.group(1))
     elif "golden globe" in text_lower:
@@ -550,10 +565,13 @@ def get_omdb_awards(title, year=None):
 def compute_awards_table(df_basic):
     """Tabla de premios OMDb para un subconjunto de pelis (Title/Year)."""
     rows = []
+    n = len(df_basic)
+    # Backoff suave si el lote es grande
+    sleep = 0.3 if n > 50 else 0.0
     for _, r in df_basic.iterrows():
         title = r.get("Title")
         year = r.get("Year")
-        awards = get_omdb_awards(title, year)
+        awards = get_omdb_awards(title, year, _sleep=sleep)
         if not isinstance(awards, dict) or "error" in awards:
             continue
         rows.append({
@@ -763,7 +781,7 @@ def load_full_data(path="Oscar_Data_1927_today.xlsx"):
 
 def attach_catalog_to_full(osc_df, my_catalog_df):
     """
-    Enlaza cada fila de datos de Óscar con tu catálogo (por título normalizado + año).
+    Enlaza cada fila de datos de Óscar con tu catálogo (por título normalizado + año, tolerando desfase ±1).
     Añade: InMyCatalog, MyRating, MyIMDb, CatalogURL
     """
     out = osc_df.copy()
@@ -780,13 +798,28 @@ def attach_catalog_to_full(osc_df, my_catalog_df):
     if "YearInt" not in cat.columns:
         cat["YearInt"] = cat.get("Year", pd.Series([None] * len(cat))).fillna(-1).astype(float).astype(int)
 
-    merged = out.merge(
-        cat[["NormTitle", "YearInt", "Your Rating", "IMDb Rating", "URL"]],
-        left_on=["NormFilm", "YearInt"],
-        right_on=["NormTitle", "YearInt"],
-        how="left",
-        suffixes=("", "_cat"),
-    )
+    merged = None
+    for delta in (0, -1, 1):
+        tmp = out.copy()
+        if delta != 0:
+            tmp["YearInt"] = tmp["YearInt"] + delta
+        merged = tmp.merge(
+            cat[["NormTitle", "YearInt", "Your Rating", "IMDb Rating", "URL"]],
+            left_on=["NormFilm", "YearInt"],
+            right_on=["NormTitle", "YearInt"],
+            how="left",
+            suffixes=("", "_cat"),
+        )
+        if merged["URL"].notna().any():
+            out = merged
+            break
+
+    if merged is None:
+        merged = out.copy()
+        merged["URL"] = None
+        merged["Your Rating"] = None
+        merged["IMDb Rating"] = None
+
     merged["InMyCatalog"] = merged["URL"].notna()
     merged["MyRating"] = merged["Your Rating"]
     merged["MyIMDb"] = merged["IMDb Rating"]
@@ -1116,6 +1149,21 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+# ----------------- Avisos de secrets -----------------
+with st.sidebar.expander("🔐 Estado de integraciones", expanded=False):
+    if TMDB_API_KEY is None:
+        st.warning("TMDb desactivado: falta TMDB_API_KEY en secrets.")
+    else:
+        st.caption("TMDb: ✅ configurado")
+    if YOUTUBE_API_KEY is None:
+        st.info("Tráilers desactivados: falta YOUTUBE_API_KEY.")
+    else:
+        st.caption("YouTube: ✅ configurado")
+    if st.secrets.get("OMDB_API_KEY", None) is None:
+        st.info("OMDb desactivado: falta OMDB_API_KEY.")
+    else:
+        st.caption("OMDb: ✅ configurado")
+
 # ----------------- Opciones de visualización -----------------
 
 st.sidebar.header("🖼️ Opciones de visualización")
@@ -1129,6 +1177,13 @@ use_tmdb_gallery = st.sidebar.checkbox(
     "Usar TMDb en la galería visual",
     value=True
 )
+
+with st.sidebar.expander("⚡ Optimización TMDb (rendimiento)", expanded=False):
+    fetch_providers = st.checkbox(
+        "Consultar plataformas de streaming (TMDb)",
+        value=True,
+        help="Desactívalo si notas lentitud en páginas con muchas tarjetas."
+    )
 
 st.sidebar.header("🎬 Tráilers")
 show_trailers = st.sidebar.checkbox(
@@ -1146,28 +1201,52 @@ if show_awards:
         "⚠ Consultar premios para muchas películas puede hacer la app más lenta en la primera carga."
     )
 
+# ----------------- Persistencia por URL (leer antes de crear widgets) -----------------
+
+qp = st.experimental_get_query_params()
+
 # ----------------- Filtros (sidebar) -----------------
 
 st.sidebar.header("🎛️ Filtros")
 
+# Derivar defaults para sliders desde datos
 if df["Year"].notna().any():
     min_year = int(df["Year"].min())
     max_year = int(df["Year"].max())
-    year_range = st.sidebar.slider(
-        "Rango de años", min_year, max_year, (min_year, max_year)
-    )
 else:
-    year_range = (0, 9999)
+    min_year = 0
+    max_year = 9999
 
 if df["Your Rating"].notna().any():
     min_rating = int(df["Your Rating"].min())
     max_rating = int(df["Your Rating"].max())
-    rating_range = st.sidebar.slider(
-        "Mi nota (Your Rating)", min_rating, max_rating, (min_rating, max_rating)
-    )
 else:
-    rating_range = (0, 10)
+    min_rating = 0
+    max_rating = 10
 
+# Defaults provenientes de URL si existen
+def _qp_int(name, default):
+    try:
+        return int(qp.get(name, [default])[0])
+    except Exception:
+        return default
+
+def _qp_csv(name):
+    val = qp.get(name, [""])[0]
+    return [x for x in val.split(",") if x.strip()] if val else []
+
+def _qp_text(name, default=""):
+    return qp.get(name, [default])[0]
+
+y0_def = _qp_int("y0", min_year)
+y1_def = _qp_int("y1", max_year)
+r0_def = _qp_int("r0", min_rating)
+r1_def = _qp_int("r1", max_rating)
+g_def = _qp_csv("g")
+d_def = _qp_csv("d")
+q_def = _qp_text("q", "")
+
+# Opciones multiselect
 all_genres = sorted(
     set(
         g
@@ -1176,11 +1255,6 @@ all_genres = sorted(
         if g
     )
 )
-selected_genres = st.sidebar.multiselect(
-    "Géneros (todas las seleccionadas deben estar presentes)",
-    options=all_genres
-)
-
 all_directors = sorted(
     set(
         d.strip()
@@ -1188,9 +1262,32 @@ all_directors = sorted(
         if str(d).strip() != ""
     )
 )
+
+# Widgets con defaults de la URL (cuando existan)
+if df["Year"].notna().any():
+    year_range = st.sidebar.slider(
+        "Rango de años", min_year, max_year, (max(min_year, y0_def), min(max_year, y1_def))
+    )
+else:
+    year_range = (0, 9999)
+
+if df["Your Rating"].notna().any():
+    rating_range = st.sidebar.slider(
+        "Mi nota (Your Rating)", min_rating, max_rating, (max(min_rating, r0_def), min(max_rating, r1_def))
+    )
+else:
+    rating_range = (0, 10)
+
+selected_genres = st.sidebar.multiselect(
+    "Géneros (todas las seleccionadas deben estar presentes)",
+    options=all_genres,
+    default=[g for g in g_def if g in all_genres]
+)
+
 selected_directors = st.sidebar.multiselect(
     "Directores",
-    options=all_directors
+    options=all_directors,
+    default=[d for d in d_def if d in all_directors]
 )
 
 order_by = st.sidebar.selectbox(
@@ -1242,6 +1339,18 @@ if selected_directors:
 
     filtered = filtered[filtered["Directors"].apply(_matches_any_director)]
 
+# ---------- Persistir filtros en URL ----------
+try:
+    st.experimental_set_query_params(
+        y0=str(year_range[0]), y1=str(year_range[1]),
+        r0=str(rating_range[0]), r1=str(rating_range[1]),
+        g=",".join(selected_genres),
+        d=",".join(selected_directors),
+        q=""
+    )
+except Exception:
+    pass
+
 # ---------- Texto “Filtros activos” cerca del título ----------
 st.caption(
     f"Filtros activos → Años: {year_range[0]}–{year_range[1]} | "
@@ -1272,7 +1381,8 @@ st.markdown("## 🔎 Búsqueda en mi catálogo (sobre los filtros actuales)")
 search_query = st.text_input(
     "Buscar por título, director, género, año o calificaciones",
     placeholder="Escribe cualquier cosa… (se aplica en tiempo real)",
-    key="busqueda_unica"
+    key="busqueda_unica",
+    value=q_def
 )
 
 def apply_search(df_in, query):
@@ -1284,6 +1394,16 @@ def apply_search(df_in, query):
     return df_in[df_in["SearchText"].str.contains(q, na=False, regex=False)]
 
 filtered_view = apply_search(filtered.copy(), search_query)
+
+# ---------- Reset de página de galería cuando cambien filtros/búsqueda ----------
+sig = (
+    tuple(year_range), tuple(rating_range),
+    tuple(sorted(selected_genres)), tuple(sorted(selected_directors)),
+    search_query
+)
+if st.session_state.get("gallery_signature") != sig:
+    st.session_state.gallery_current_page = 1
+st.session_state.gallery_signature = sig
 
 # Orden global según opción
 if order_by == "Aleatorio":
@@ -1420,6 +1540,20 @@ with tab_catalog:
         end_idx = start_idx + page_size
         page_df = filtered_view.iloc[start_idx:end_idx].copy()
 
+        # ---------- Batching TMDb por página ----------
+        page_tmdb_cache = {}
+        if use_tmdb_gallery:
+            for _, row in page_df.iterrows():
+                t, y = row.get("Title"), row.get("Year")
+                page_tmdb_cache[(t, y)] = get_tmdb_basic_info(t, y)
+
+        provider_cache = {}
+        if use_tmdb_gallery and fetch_providers:
+            for (t, y), info in page_tmdb_cache.items():
+                if info and info.get("id"):
+                    tmdb_id = info["id"]
+                    provider_cache[tmdb_id] = get_tmdb_providers(tmdb_id, country="CL")
+
         cards_html = ['<div class="movie-gallery-grid">']
 
         for _, row in page_df.iterrows():
@@ -1435,12 +1569,12 @@ with tab_catalog:
             border_color, glow_color = get_rating_colors(base_rating)
 
             if use_tmdb_gallery:
-                tmdb_info = get_tmdb_basic_info(titulo, year)
+                tmdb_info = page_tmdb_cache.get((titulo, year))
                 if tmdb_info:
                     poster_url = tmdb_info.get("poster_url")
                     tmdb_rating = tmdb_info.get("vote_average")
                     tmdb_id = tmdb_info.get("id")
-                    availability = get_tmdb_providers(tmdb_id, country="CL")
+                    availability = provider_cache.get(tmdb_id) if fetch_providers else None
                 else:
                     poster_url = None
                     tmdb_rating = None
@@ -1452,15 +1586,16 @@ with tab_catalog:
                 availability = None
 
             if isinstance(poster_url, str) and poster_url:
+                alt_text = f"Póster de {titulo}{' ('+fmt_year(year)+')' if pd.notna(year) else ''}"
                 poster_html = f"""
 <div class="movie-poster-frame">
-  <img src="{poster_url}" alt="{titulo}" class="movie-poster-img">
+  <img src="{poster_url}" alt="{alt_text}" class="movie-poster-img">
 </div>
 """
             else:
                 poster_html = """
 <div class="movie-poster-frame">
-  <div class="movie-poster-placeholder">
+  <div class="movie-poster-placeholder" aria-label="Sin póster disponible">
     <div class="film-reel-icon">🎞️</div>
     <div class="film-reel-text">Sin póster</div>
   </div>
@@ -2029,7 +2164,8 @@ with tab_analysis:
             if diff_df.empty:
                 st.write("No hay suficientes películas con ambas notas (mía e IMDb) para este análisis.")
             else:
-                diff_df["Diff"] = diff_df["Your Rating"] - df["IMDb Rating"]
+                # BUGFIX: antes restaba contra df["IMDb Rating"] (posible desalineación)
+                diff_df["Diff"] = diff_df["Your Rating"] - diff_df["IMDb Rating"]
                 infraval = diff_df[(diff_df["Your Rating"] >= 8) & (diff_df["Diff"] >= 1.0)]
                 infraval = infraval.sort_values("Diff", ascending=False).head(30)
 
@@ -2386,7 +2522,7 @@ with tab_awards:
         st.info("No pude cargar 'Oscar_Data_1927_today.xlsx'. Asegúrate de incluirlo en el repo.")
         st.stop()
 
-    # Enlaza con tu catálogo
+    # Enlaza con tu catálogo (con tolerancia ±1 año)
     osc_x = attach_catalog_to_full(osc, df)
 
     # --------- Controles ----------
@@ -2576,7 +2712,7 @@ with tab_awards:
         else:
             st.write("No encontré columnas 'Name' ni 'Nominee' en los datos.")
 
-    # --------- NUEVO: Estadísticas por categoría (ganadores) con Film / Name / Nominee ----------
+    # --------- Estadísticas por categoría (ganadores) con Film / Name / Nominee ----------
     st.markdown("### 📊 Estadísticas por categoría (ganadores)")
 
     if all_cats:

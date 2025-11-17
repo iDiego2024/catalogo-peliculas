@@ -2509,21 +2509,6 @@ with tab_awards:
         else:
             st.write("Sin datos de películas para este año con los filtros actuales.")
 
-    with colr2:
-        # Entidades desde NomineeIds (productoras/personas/estudios)
-        ent = nom_ff.copy()
-        ent = ent.explode("NomineeIdsList")
-        ent = ent[ent["NomineeIdsList"].notna() & (ent["NomineeIdsList"] != "")]
-        top_entities = (
-            ent.groupby("NomineeIdsList")
-            .size().reset_index(name="Nominaciones")
-            .sort_values(["Nominaciones", "NomineeIdsList"], ascending=[False, True])
-            .head(15)
-        )
-        if not top_entities.empty:
-            te_disp = top_entities.rename(columns={"NomineeIdsList": "Entidad (NomineeIds)"})
-            st.dataframe(te_disp, use_container
-
                 # --------- Galería visual por categoría (año seleccionado) ----------
                 st.markdown("---")
                 st.markdown("### 🎨 Galería visual por categoría (año seleccionado)")

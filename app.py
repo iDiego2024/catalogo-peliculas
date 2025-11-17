@@ -2658,245 +2658,6 @@ def render_year_chips(all_years, key_prefix="osc_years"):
 
 
 # ============================================================
-#           TAB 4: PREMIOS ÓSCAR (USANDO EXCEL)
-# ============================================================
-
-# ----------------- Helpers Óscar: carga desde Excel -----------------
-
-@st.cache_data
-def load_oscar_data_from_excel(path_xlsx="Oscar_Data_1927_today.xlsx"):
-    """
-    Carga robusta del Excel Oscar_Data_1927_today.xlsx y lo normaliza a un esquema:
-    - YearFilmInt: año de la película (base para los años)
-    - YearCeremonyInt: año de la ceremonia (si existe)
-    - CategoryNorm: categoría "bonita"
-    - Film, Nominee, NomineeIdsList
-    - IsWinner: bool (interpretando distintas variantes)
-    - NormFilm: título normalizado para cruzar con tu catálogo
-    """
-    try:
-        raw = pd.read_excel(path_xlsx, engine="openpyxl")
-    except Exception:
-        return pd.DataFrame()
-
-    if raw.empty:
-        return pd.DataFrame()
-
-    raw.columns = [str(c).strip() for c in raw.columns]
-    idx = raw.index
-
-    def col_or_empty(name, default=""):
-        return raw[name] if name in raw.columns else pd.Series([default] * len(raw), index=idx)
-
-    # ---- Año de película (YearFilmInt) ----
-    year_film_col = None
-    for cand in ["Year_Film", "Year Film", "Year of Film", "Film_Year", "Film Year", "Year"]:
-        if cand in raw.columns:
-            year_film_col = cand
-            break
-    if year_film_col is None:
-        # último recurso: cualquier columna que parezca año
-        for c in raw.columns:
-            if "year" in c.lower():
-                year_film_col = c
-                break
-
-    if year_film_col is not None:
-        yf = pd.to_numeric(raw[year_film_col], errors="coerce")
-        raw["YearFilmInt"] = yf.fillna(-1).astype(int)
-    else:
-        raw["YearFilmInt"] = -1
-
-    # ---- Año de ceremonia (YearCeremonyInt) ----
-    year_cer_col = None
-    for cand in ["Year_Ceremony", "Year Ceremony", "Ceremony_Year", "Ceremony Year", "Ceremony"]:
-        if cand in raw.columns:
-            year_cer_col = cand
-            break
-
-    if year_cer_col is not None:
-        yc = pd.to_numeric(raw[year_cer_col], errors="coerce")
-        raw["YearCeremonyInt"] = yc.fillna(-1).astype(int)
-    else:
-        raw["YearCeremonyInt"] = raw["YearFilmInt"]
-
-    # ---- Categoría normalizada ----
-    cat_col = None
-    for cand in ["CanonicalCategory", "Canonical_Category", "CanonCategory", "CanonCat", "Category"]:
-        if cand in raw.columns:
-            cat_col = cand
-            break
-    if cat_col is None:
-        cat_col = raw.columns[0]
-
-    raw["CategoryNorm"] = col_or_empty(cat_col).astype(str).str.strip()
-
-    # ---- Texto de nominado / película / IDs ----
-    raw["Nominee"] = col_or_empty("Nominee").astype(str)
-    raw["Film"] = col_or_empty("Film").astype(str)
-    ids_base = col_or_empty("NomineeIds").astype(str).fillna("")
-    raw["NomineeIdsList"] = ids_base.apply(
-        lambda s: [x.strip() for x in re.split(r"[;,]", s) if x.strip()]
-    )
-
-    # ---- Ganador (IsWinner) robusto ----
-    wcol = None
-    for cand in ["IsWinner", "Winner", "Winner?", "winner", "WINNER", "is_winner"]:
-        if cand in raw.columns:
-            wcol = cand
-            break
-
-    if wcol is not None:
-        col = raw[wcol]
-        if pd.api.types.is_numeric_dtype(col):
-            tmp = pd.to_numeric(col, errors="coerce").fillna(0)
-            raw["IsWinnerNorm"] = tmp > 0.5
-        else:
-            s = col.astype(str).str.strip().str.lower()
-            raw["IsWinnerNorm"] = (
-                s.isin(["1", "yes", "y", "true", "winner", "win", "won", "si", "sí"])
-                | s.str.contains("winner", na=False)
-            )
-    else:
-        raw["IsWinnerNorm"] = False
-
-    # ---- Título normalizado para catálogo ----
-    raw["NormFilm"] = raw["Film"].apply(normalize_title)
-
-    out = pd.DataFrame({
-        "YearFilmInt": raw["YearFilmInt"],
-        "YearCeremonyInt": raw["YearCeremonyInt"],
-        "CategoryNorm": raw["CategoryNorm"],
-        "Nominee": raw["Nominee"],
-        "Film": raw["Film"],
-        "NomineeIdsList": raw["NomineeIdsList"],
-        "IsWinner": raw["IsWinnerNorm"].fillna(False),
-        "NormFilm": raw["NormFilm"],
-    })
-
-    return out
-
-
-# ============================================================
-#           HELPERS ÓSCAR: CARGA DESDE EXCEL
-# ============================================================
-
-@st.cache_data
-def load_oscar_data_from_excel(path_xlsx="Oscar_Data_1927_today.xlsx"):
-    """
-    Carga robusta del Excel Oscar_Data_1927_today.xlsx y lo normaliza a un esquema:
-      - YearFilmInt: año de la película (base para los años)
-      - YearCeremonyInt: año de la ceremonia (si existe)
-      - CategoryNorm: categoría "bonita"
-      - Film, Nominee, NomineeIdsList
-      - IsWinner: bool (interpretando distintas variantes)
-      - NormFilm: título normalizado para cruzar con tu catálogo
-    """
-    try:
-        raw = pd.read_excel(path_xlsx, engine="openpyxl")
-    except Exception:
-        return pd.DataFrame()
-
-    if raw.empty:
-        return pd.DataFrame()
-
-    raw.columns = [str(c).strip() for c in raw.columns]
-    idx = raw.index
-
-    def col_or_empty(name, default=""):
-        return raw[name] if name in raw.columns else pd.Series([default] * len(raw), index=idx)
-
-    # ---- Año de película (YearFilmInt) ----
-    year_film_col = None
-    for cand in ["Year_Film", "Year Film", "Year of Film", "Film_Year", "Film Year", "Year"]:
-        if cand in raw.columns:
-            year_film_col = cand
-            break
-    if year_film_col is None:
-        # último recurso: cualquier columna que parezca año
-        for c in raw.columns:
-            if "year" in c.lower():
-                year_film_col = c
-                break
-
-    if year_film_col is not None:
-        yf = pd.to_numeric(raw[year_film_col], errors="coerce")
-        raw["YearFilmInt"] = yf.fillna(-1).astype(int)
-    else:
-        raw["YearFilmInt"] = -1
-
-    # ---- Año de ceremonia (YearCeremonyInt) ----
-    year_cer_col = None
-    for cand in ["Year_Ceremony", "Year Ceremony", "Ceremony_Year", "Ceremony Year", "Ceremony"]:
-        if cand in raw.columns:
-            year_cer_col = cand
-            break
-
-    if year_cer_col is not None:
-        yc = pd.to_numeric(raw[year_cer_col], errors="coerce")
-        raw["YearCeremonyInt"] = yc.fillna(-1).astype(int)
-    else:
-        raw["YearCeremonyInt"] = raw["YearFilmInt"]
-
-    # ---- Categoría normalizada ----
-    cat_col = None
-    for cand in ["CanonicalCategory", "Canonical_Category", "CanonCategory", "CanonCat", "Category"]:
-        if cand in raw.columns:
-            cat_col = cand
-            break
-    if cat_col is None:
-        cat_col = raw.columns[0]
-
-    raw["CategoryNorm"] = col_or_empty(cat_col).astype(str).str.strip()
-
-    # ---- Texto de nominado / película / IDs ----
-    raw["Nominee"] = col_or_empty("Nominee").astype(str)
-    raw["Film"] = col_or_empty("Film").astype(str)
-
-    ids_base = col_or_empty("NomineeIds").astype(str).fillna("")
-    raw["NomineeIdsList"] = ids_base.apply(
-        lambda s: [x.strip() for x in re.split(r"[;,]", s) if x.strip()]
-    )
-
-    # ---- Ganador (IsWinner) robusto ----
-    wcol = None
-    for cand in ["IsWinner", "Winner", "Winner?", "winner", "WINNER", "is_winner"]:
-        if cand in raw.columns:
-            wcol = cand
-            break
-
-    if wcol is not None:
-        col = raw[wcol]
-        if pd.api.types.is_numeric_dtype(col):
-            tmp = pd.to_numeric(col, errors="coerce").fillna(0)
-            raw["IsWinnerNorm"] = tmp > 0.5
-        else:
-            s = col.astype(str).str.strip().str.lower()
-            raw["IsWinnerNorm"] = (
-                s.isin(["1", "yes", "y", "true", "winner", "win", "won", "si", "sí"])
-                | s.str.contains("winner", na=False)
-            )
-    else:
-        raw["IsWinnerNorm"] = False
-
-    # ---- Título normalizado para catálogo ----
-    raw["NormFilm"] = raw["Film"].apply(normalize_title)
-
-    out = pd.DataFrame({
-        "YearFilmInt": raw["YearFilmInt"],
-        "YearCeremonyInt": raw["YearCeremonyInt"],
-        "CategoryNorm": raw["CategoryNorm"],
-        "Nominee": raw["Nominee"],
-        "Film": raw["Film"],
-        "NomineeIdsList": raw["NomineeIdsList"],
-        "IsWinner": raw["IsWinnerNorm"].fillna(False),
-        "NormFilm": raw["NormFilm"],
-    })
-
-    return out
-
-
-# ============================================================
 #                     TAB 4: PREMIOS ÓSCAR (EXCEL)
 # ============================================================
 
@@ -3045,9 +2806,10 @@ with tab_awards:
             placeholder="Ej: 'Best Picture' o 'Spielberg' o 'Anora'",
         )
 
-    # Aplicar filtros
-    ff = osc_x[osc_x["FilmYearInt"] == year_selected].copy()
+    # Aplicar filtros base
+    year_block_all = osc_x[osc_x["FilmYearInt"] == year_selected].copy()
 
+    ff = year_block_all.copy()
     if cats_sel:
         ff = ff[ff["CanonCat"].isin(cats_sel)]
 
@@ -3102,14 +2864,16 @@ with tab_awards:
         - footer_badges: lista de chips al pie [(texto, tipo)]
         """
         year_str = f" ({film_year})" if film_year and film_year > 0 else ""
-        title_full = f"{film_title}{year_str}"
+        base_title = f"{film_title}{year_str}"
         if is_winner:
-            title_full = f"🏆 {title_full}"
+            title_full = f"🏆 {base_title}"
+        else:
+            title_full = base_title
 
         border_color, glow_color = get_rating_colors(my_rating if pd.notna(my_rating) else imdb_rating)
         if is_winner:
             border_color = "#22c55e"
-            glow_color = "rgba(34,197,94,0.65)"
+            glow_color = "rgba(34,197,94,0.70)"
 
         tmdb_poster_url = None
         tmdb_id = None
@@ -3149,7 +2913,7 @@ with tab_awards:
                 "</div>"
             )
 
-        # Secondary badges (categorías/nominaciones) en modo "solo ganadoras" o nominados
+        # Secondary badges (categorías/nominaciones, personas…)
         secondary_html = ""
         if secondary_badges:
             chips = []
@@ -3260,10 +3024,10 @@ with tab_awards:
 
     st.caption("En modo normal se muestran **todos los nominados**, agrupados por categoría.")
 
-    # Subconjunto del año (con filtros aplicados)
+    # Subconjunto del año + filtros actuales
     year_block = ff.copy()
 
-    # Pre-cache info TMDb por película para no llamar TMDb en cada fila
+    # Cache TMDb por película
     tmdb_cache = {}
     for film, g in year_block.groupby("Film"):
         first_row = g.iloc[0]
@@ -3276,18 +3040,17 @@ with tab_awards:
     if show_winners_only:
         st.markdown("#### 🎖️ Películas ganadoras en este año")
 
-        winners_films = []
-        for film, g in ff.groupby("Film"):
-            if bool(g["IsWinner"].any()):
-                winners_films.append((film, g))
-
-        if not winners_films:
+        winners_rows = year_block[year_block["IsWinner"] == True].copy()
+        if winners_rows.empty:
             st.info("No hay películas ganadoras para este año con los filtros actuales.")
         else:
+            winners_films = []
+            for film, g in winners_rows.groupby("Film"):
+                winners_films.append((film, g))
+
             cards_html = ["<div class='movie-gallery-grid'>"]
 
             for film, g in sorted(winners_films, key=lambda x: x[0]):
-                any_win = bool(g["IsWinner"].any())
                 film_year = int(g["FilmYearInt"].iloc[0]) if g["FilmYearInt"].iloc[0] > 0 else year_selected
 
                 # Info de catálogo
@@ -3296,7 +3059,7 @@ with tab_awards:
                 imdb_rating = g["MyIMDb"].dropna().mean() if g["MyIMDb"].notna().any() else None
                 imdb_url = g["CatalogURL"].dropna().iloc[0] if g["CatalogURL"].notna().any() else None
 
-                # Categorías y si ganó en ellas
+                # Categorías ganadas (y nominadas)
                 secondary_badges = []
                 for _, row in g.iterrows():
                     cat = str(row.get("CanonCat") or "").strip()
@@ -3304,7 +3067,8 @@ with tab_awards:
                     text = cat
                     if nominee:
                         text = f"{cat} · {nominee}"
-                    secondary_badges.append((text, bool(row.get("IsWinner", False))))
+                    won_here = bool(row.get("IsWinner", False))
+                    secondary_badges.append((text, won_here))
 
                 # Footer: en mi catálogo
                 footer_badges = []
@@ -3318,7 +3082,7 @@ with tab_awards:
                 card_html = build_movie_card_html(
                     film_title=film,
                     film_year=film_year,
-                    is_winner=any_win,
+                    is_winner=True,
                     in_catalog=in_catalog,
                     my_rating=my_rating,
                     imdb_rating=imdb_rating,
@@ -3378,8 +3142,13 @@ with tab_awards:
                     footer_badges.append(("En mi catálogo", "catalog"))
 
                 secondary_badges = []
+                # Aquí ponemos clarito quién es la persona y si ganó
                 if nominee:
-                    secondary_badges.append((nominee, is_winner))
+                    sec_text = nominee
+                    if is_winner:
+                        # Para que sea aún más obvio en la galería normal
+                        sec_text = f"WINNER · {nominee}"
+                    secondary_badges.append((sec_text, is_winner))
 
                 card_html = build_movie_card_html(
                     film_title=film,
@@ -3435,7 +3204,7 @@ with tab_awards:
     st.markdown("---")
     st.markdown("### 🎯 Detalle de nominaciones por película")
 
-    films_in_year = sorted(year_block["Film"].dropna().unique().tolist())
+    films_in_year = sorted(ff["Film"].dropna().unique().tolist())
     if not films_in_year:
         st.info("No hay películas para mostrar detalles de nominaciones en este año.")
     else:
@@ -3445,7 +3214,7 @@ with tab_awards:
             index=0,
         )
 
-        gfilm = year_block[year_block["Film"] == selected_film].copy()
+        gfilm = ff[ff["Film"] == selected_film].copy()
         if gfilm.empty:
             st.info("No se encontraron nominaciones para esa película.")
         else:
@@ -3590,6 +3359,7 @@ with tab_awards:
             html += "</div>"  # cierre movie-card
 
             st.markdown(html, unsafe_allow_html=True)
+
 
 
 

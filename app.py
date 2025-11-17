@@ -2948,30 +2948,40 @@ def build_oscar_movie_card_html(
             "</div></div>"
         )
 
-    # Tarjeta completa (sin indentación rara para que Markdown no la trate como código)
-    card_html = (
-        f"<div class='movie-card movie-card-grid' "
-        f"style='border-color:{border_color};"
-        "box-shadow:0 0 0 1px rgba(15,23,42,0.9),0 0 26px "
-        f"{glow_color};'>"
-        f"{poster_html}"
-        f"<div class='movie-title'>{film_title}{year_str}</div>"
-        "<div class='movie-sub'>"
-        f"{imdb_txt}{tmdb_txt}"
-        f"{imdb_link_html}<br>" if imdb_link_html else f"{imdb_txt}{tmdb_txt}"
+    # Construimos la tarjeta de forma explícita para evitar ternarios raros
+    parts = []
+    parts.append(
+        "<div class='movie-card movie-card-grid' "
+        "style='max-width:230px;border-color:"
+        + border_color
+        + ";box-shadow:0 0 0 1px rgba(15,23,42,0.9),0 0 26px "
+        + glow_color
+        + ";'>"
     )
+    parts.append(poster_html)
+    parts.append(f"<div class='movie-title'>{film_title}{year_str}</div>")
+    parts.append("<div class='movie-sub'>")
 
-    # añadimos reseñas/streaming/categoría dentro de la misma cadena
-    extra_html = ""
+    # ratings
+    if imdb_txt or tmdb_txt:
+        parts.append(imdb_txt + tmdb_txt)
+
+    # enlaces
+    if imdb_link_html:
+        parts.append(imdb_link_html + "<br>")
     if reseñas_html:
-        extra_html += reseñas_html + "<br>"
-    extra_html += streaming_html + "<br><br>"
-    extra_html += "<span style='font-size:0.78rem;color:#9ca3af;'>Categoría(s):</span><br>"
-    extra_html += f"<span style='font-size:0.82rem;font-weight:500;'>{category_text}</span>"
-    extra_html += winner_badge + catalog_badge + people_html
-    card_html += extra_html + "</div></div>"
+        parts.append(reseñas_html + "<br>")
 
-    return card_html
+    parts.append(streaming_html + "<br><br>")
+    parts.append("<span style='font-size:0.78rem;color:#9ca3af;'>Categoría(s):</span><br>")
+    parts.append(f"<span style='font-size:0.82rem;font-weight:500;'>{category_text}</span>")
+    parts.append(winner_badge)
+    parts.append(catalog_badge)
+    parts.append(people_html)
+
+    parts.append("</div></div>")  # cierre movie-sub y movie-card
+
+    return "".join(parts)
 
 
 with tab_awards:
@@ -3135,7 +3145,12 @@ with tab_awards:
                 )
 
                 grouped = cat_rows.groupby(["Film", "FilmYear"], dropna=False)
-                cards_html = ["<div class='movie-gallery-grid'>"]
+
+                cards_html = [
+                    "<div class='movie-gallery-grid' "
+                    "style='display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));"
+                    "gap:18px;align-items:flex-start;'>"
+                ]
 
                 for (film_title, film_year), g in grouped:
                     people = g["PersonName"].dropna().unique().tolist()
@@ -3209,7 +3224,13 @@ with tab_awards:
             if not winner_cards:
                 st.info("No hay películas ganadoras para este año con los filtros actuales.")
             else:
-                html = "<div class='movie-gallery-grid'>" + "".join(winner_cards) + "</div>"
+                html = (
+                    "<div class='movie-gallery-grid' "
+                    "style='display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));"
+                    "gap:18px;align-items:flex-start;'>"
+                    + "".join(winner_cards)
+                    + "</div>"
+                )
                 st.markdown(html, unsafe_allow_html=True)
 
     # =====================================================

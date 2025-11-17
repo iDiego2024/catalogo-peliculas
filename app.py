@@ -1,5 +1,3 @@
-Faltó muy poco, me diste este codigo, puedes darme lo que falta solamente,
-
 import streamlit as st
 import pandas as pd
 import requests

@@ -2895,7 +2895,6 @@ def load_oscar_data_from_excel(path_xlsx="Oscar_Data_1927_today.xlsx"):
 
     return out
 
-
 # ============================================================
 #                     TAB 4: PREMIOS ÓSCAR
 # ============================================================
@@ -2903,7 +2902,7 @@ def load_oscar_data_from_excel(path_xlsx="Oscar_Data_1927_today.xlsx"):
 with tab_awards:
     st.markdown("## 🏆 Premios de la Academia (usando Oscar_Data_1927_today.xlsx)")
 
-    # Carga del Excel ya preparada en load_oscar_data_from_excel (usa openpyxl)
+    # Carga del Excel (usa openpyxl dentro de load_oscar_data_from_excel)
     try:
         osc = load_oscar_data_from_excel("Oscar_Data_1927_today.xlsx")
     except Exception as e:
@@ -2918,7 +2917,6 @@ with tab_awards:
         st.stop()
 
     # Enlazar con tu catálogo
-    # YearFilmInt viene de load_oscar_data_from_excel
     osc["YearInt"] = osc["YearFilmInt"]
     osc_x = attach_catalog_to_full(osc, df)
 
@@ -2926,8 +2924,8 @@ with tab_awards:
 
     st.markdown("### 🎛️ Filtros en premios")
 
-    # Años válidos (base año de película, no ceremonia)
-    valid_years = sorted(y for y in osc_x["YearFilmInt"].unique() if y > 0)
+    # Años válidos (año de película)
+    valid_years = sorted(int(y) for y in osc_x["YearFilmInt"].unique() if y > 0)
     if not valid_years:
         st.info("No hay años de película válidos en los datos de Óscar.")
         st.stop()
@@ -3010,14 +3008,15 @@ with tab_awards:
 
             st.markdown(f"#### 🎬 {cat}")
 
-            cards_html = ['<div class="movie-gallery-grid">']
+            cards_html_parts = ['<div class="movie-gallery-grid">']
 
-            for _, row in (
-                sub.sort_values(
-                    ["IsWinner", "Film", "Nominee"],
-                    ascending=[False, True, True]
-                ).iterrows()
-            ):
+            # Orden: ganadores primero, luego resto alfabético
+            sub = sub.sort_values(
+                ["IsWinner", "Film", "Nominee"],
+                ascending=[False, True, True],
+            )
+
+            for _, row in sub.iterrows():
                 film = (row.get("Film") or "").strip()
                 nominee = (row.get("Nominee") or "").strip()
                 is_winner = bool(row.get("IsWinner", False))
@@ -3049,14 +3048,17 @@ with tab_awards:
                         poster_url = info.get("poster_url")
 
                 if poster_url:
-                    poster_html = f"<img src='{poster_url}' alt='{title_display}' class='movie-poster-img' />"
+                    poster_html = (
+                        f"<img src='{poster_url}' alt='{title_display}' "
+                        f"class='movie-poster-img' />"
+                    )
                 else:
-                    poster_html = """
-                    <div class="movie-poster-placeholder">
-                        <div class="film-reel-icon">🎞️</div>
-                        <div class="film-reel-text">Sin póster</div>
-                    </div>
-                    """
+                    poster_html = (
+                        "<div class='movie-poster-placeholder'>"
+                        "<div class='film-reel-icon'>🎞️</div>"
+                        "<div class='film-reel-text'>Sin póster</div>"
+                        "</div>"
+                    )
 
                 # Estilo según ganador / en catálogo
                 if is_winner:
@@ -3069,7 +3071,7 @@ with tab_awards:
                     border_color = "rgba(148,163,184,0.9)"
                     glow_color = "rgba(15,23,42,0.9)"
 
-                # Detalles de texto (sin <br> sueltos)
+                # Detalles de texto (sin <br> crudos)
                 detail_lines = []
 
                 if pd.notna(imdb_rating):
@@ -3114,28 +3116,29 @@ with tab_awards:
 
                 badges_html = "".join(badge_parts)
 
-                card_html = f"""
-                <div class="movie-card movie-card-grid"
-                     style="border-color:{border_color};
-                            box-shadow:
-                                0 0 0 1px rgba(15,23,42,0.9),
-                                0 0 26px {glow_color};">
-                    <div class="movie-poster-frame">
-                        {poster_html}
-                    </div>
-                    <div class="movie-title">{title_display}{year_str}</div>
-                    <div class="movie-sub">
-                        {detail_html}
-                        <div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:4px;">
-                            {badges_html}
-                        </div>
-                    </div>
-                </div>
-                """
-                cards_html.append(card_html)
+                card_html = (
+                    "<div class='movie-card movie-card-grid' "
+                    f"style='border-color:{border_color};"
+                    "box-shadow:0 0 0 1px rgba(15,23,42,0.9),"
+                    f"0 0 26px {glow_color};'>"
+                    "<div class='movie-poster-frame'>"
+                    f"{poster_html}"
+                    "</div>"
+                    f"<div class='movie-title'>{title_display}{year_str}</div>"
+                    "<div class='movie-sub'>"
+                    f"{detail_html}"
+                    "<div style='margin-top:6px;display:flex;flex-wrap:wrap;gap:4px;'>"
+                    f"{badges_html}"
+                    "</div>"
+                    "</div>"
+                    "</div>"
+                )
 
-            cards_html.append("</div>")
-            st.markdown("\n".join(cards_html), unsafe_allow_html=True)
+                cards_html_parts.append(card_html)
+
+            cards_html_parts.append("</div>")
+            gallery_html = "".join(cards_html_parts)
+            st.markdown(gallery_html, unsafe_allow_html=True)
 
     # ============================================================
     #        VISTA TABULAR POR AÑO (CATEGORÍAS + GANADORES)
@@ -3269,7 +3272,6 @@ with tab_awards:
             else:
                 te_disp = top_entities.rename(columns={"Nominee": "Entidad"})
                 st.dataframe(te_disp, use_container_width=True, hide_index=True)
-
 
 
 

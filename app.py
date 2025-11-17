@@ -8,9 +8,14 @@ import math
 from urllib.parse import quote_plus
 
 # ===================== Versión y changelog =====================
-APP_VERSION = "1.1.3"  # <- súbela cuando publiques cambios
+APP_VERSION = "1.1.4"  # <- súbela cuando publiques cambios
 
 CHANGELOG = {
+    "1.1.4": [
+        "Análisis: se corrige el cálculo de diferencia (Mi nota − IMDb) en películas infravaloradas.",
+        "AFI: se elimina la entrada duplicada de 'Tootsie' en la lista AFI 100.",
+        "Robustez: normalización más segura del año (Year) y del campo YearInt.",
+    ],
     "1.1.3": [
         "Óscar: se usa exclusivamente full_data.csv (DLu/oscar_data).",
         "Óscar: ganadores resaltados en verde; tablas y gráficos por NomineeIds (productoras/personas).",
@@ -165,7 +170,6 @@ AFI_LIST = [
     {"Rank": 88, "Title": "The Sixth Sense", "Year": 1999},
     {"Rank": 89, "Title": "Swing Time", "Year": 1936},
     {"Rank": 90, "Title": "Sophie's Choice", "Year": 1982},
-    {"Rank": 91, "Title": "Tootsie", "Year": 1982},
     {"Rank": 92, "Title": "Goodfellas", "Year": 1990},
     {"Rank": 93, "Title": "The French Connection", "Year": 1971},
     {"Rank": 94, "Title": "Pulp Fiction", "Year": 1994},
@@ -198,12 +202,9 @@ def load_data(file_path_or_buffer):
         df["IMDb Rating"] = None
 
     if "Year" in df.columns:
-        df["Year"] = (
-            df["Year"]
-            .astype(str)
-            .str.extract(r"(\d{4})")[0]
-            .astype(float)
-        )
+        # Extrae año de 4 dígitos y lo convierte de forma robusta a numérico
+        year_str = df["Year"].astype(str).str.extract(r"(\d{4})")[0]
+        df["Year"] = pd.to_numeric(year_str, errors="coerce")
     else:
         df["Year"] = None
 
@@ -505,7 +506,7 @@ def get_omdb_awards(title, year=None):
 
     m_bafta = re.search(r"won\s+(\d+)[^\.]*bafta", text_lower)
     if m_bafta:
-        baftas = int(m_bafta.group(1))
+        baftas = int(m_bafta)
     elif "bafta" in text_lower:
         baftas = 1
 
@@ -743,7 +744,7 @@ def attach_catalog_to_full(osc_df, my_catalog_df):
     if "NormTitle" not in cat.columns:
         cat["NormTitle"] = cat.get("Title", "").apply(normalize_title)
     if "YearInt" not in cat.columns:
-        cat["YearInt"] = cat.get("Year", pd.Series([None] * len(cat))).fillna(-1).astype(float).astype(int)
+        cat["YearInt"] = pd.to_numeric(cat.get("Year", pd.Series([None] * len(cat))), errors="coerce").fillna(-1).astype(int)
 
     merged = out.merge(
         cat[["NormTitle", "YearInt", "Your Rating", "IMDb Rating", "URL"]],
@@ -787,7 +788,7 @@ if "Title" not in df.columns:
 df["NormTitle"] = df["Title"].apply(normalize_title)
 
 if "Year" in df.columns:
-    df["YearInt"] = df["Year"].fillna(-1).astype(int)
+    df["YearInt"] = pd.to_numeric(df["Year"], errors="coerce").fillna(-1).astype(int)
 else:
     df["YearInt"] = -1
 
@@ -1994,7 +1995,8 @@ with tab_analysis:
             if diff_df.empty:
                 st.write("No hay suficientes películas con ambas notas (mía e IMDb) para este análisis.")
             else:
-                diff_df["Diff"] = diff_df["Your Rating"] - df["IMDb Rating"]
+                # BUG FIX: antes restaba contra df["IMDb Rating"] en vez de diff_df["IMDb Rating"]
+                diff_df["Diff"] = diff_df["Your Rating"] - diff_df["IMDb Rating"]
                 infraval = diff_df[(diff_df["Your Rating"] >= 8) & (diff_df["Diff"] >= 1.0)]
                 infraval = infraval.sort_values("Diff", ascending=False).head(30)
 
@@ -2241,7 +2243,7 @@ with tab_afi:
 
         if "YearInt" not in df.columns:
             if "Year" in df.columns:
-                df["YearInt"] = df["Year"].fillna(-1).astype(int)
+                df["YearInt"] = pd.to_numeric(df["Year"], errors="coerce").fillna(-1).astype(int)
             else:
                 df["YearInt"] = -1
         if "NormTitle" not in df.columns:

@@ -2896,6 +2896,7 @@ def load_oscar_data_from_excel(path_xlsx="Oscar_Data_1927_today.xlsx"):
     return out
 
 
+
 # ============================================================
 #                     TAB 4: PREMIOS ÓSCAR (EXCEL)
 # ============================================================
@@ -3098,8 +3099,8 @@ with tab_awards:
         """
         Devuelve el HTML de una tarjeta de película usando las mismas clases que la galería principal.
         - main_badge_text: texto grande destacado (ej: 'WINNER 🏆 Best Picture')
-        - secondary_badges: lista de chips pequeños (ej: categorías / nominaciones)
-        - footer_badges: lista de chips al pie (ej: 'En mi catálogo · Mi nota: 8.0')
+        - secondary_badges: lista de chips pequeños [(texto, ganó?)]
+        - footer_badges: lista de chips al pie [(texto, tipo)]
         """
         year_str = f" ({film_year})" if film_year and film_year > 0 else ""
         title_full = f"{film_title}{year_str}"
@@ -3111,32 +3112,33 @@ with tab_awards:
 
         # Póster
         if tmdb_poster_url:
-            poster_html = f"""
-<div class="movie-poster-frame">
-  <img src="{tmdb_poster_url}" alt="{film_title}" class="movie-poster-img" />
-</div>
-"""
+            poster_html = (
+                "<div class='movie-poster-frame'>"
+                f"<img src='{tmdb_poster_url}' alt='{film_title}' class='movie-poster-img' />"
+                "</div>"
+            )
         else:
-            poster_html = """
-<div class="movie-poster-frame">
-  <div class="movie-poster-placeholder">
-    <div class="film-reel-icon">🎞️</div>
-    <div class="film-reel-text">Sin póster</div>
-  </div>
-</div>
-"""
+            poster_html = (
+                "<div class='movie-poster-frame'>"
+                "<div class='movie-poster-placeholder'>"
+                "<div class='film-reel-icon'>🎞️</div>"
+                "<div class='film-reel-text'>Sin póster</div>"
+                "</div>"
+                "</div>"
+            )
 
         # Badge principal (arriba)
         main_badge_html = ""
         if main_badge_text:
-            main_badge_html = f"""
-<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:4px;">
-  <span style='background:rgba(34,197,94,0.20);border-radius:999px;padding:2px 10px;font-size:0.72rem;
-               text-transform:uppercase;letter-spacing:0.12em;border:1px solid #22c55e;color:#bbf7d0;'>
-    {main_badge_text}
-  </span>
-</div>
-"""
+            main_badge_html = (
+                "<div style='margin-top:6px;display:flex;flex-wrap:wrap;gap:4px;'>"
+                "<span style='background:rgba(34,197,94,0.20);border-radius:999px;"
+                "padding:2px 10px;font-size:0.72rem;text-transform:uppercase;"
+                "letter-spacing:0.12em;border:1px solid #22c55e;color:#bbf7d0;'>"
+                f"{main_badge_text}"
+                "</span>"
+                "</div>"
+            )
 
         # Secondary badges (categorías/nominaciones) en modo "solo ganadoras"
         secondary_html = ""
@@ -3154,12 +3156,15 @@ with tab_awards:
                     color = "#e5e7eb"
                     prefix = "✦ "
                 chips.append(
-                    f"<span style='background:{bg};border-radius:999px;padding:2px 9px;font-size:0.72rem;"
+                    "<span style="
+                    f"'background:{bg};border-radius:999px;padding:2px 9px;font-size:0.72rem;"
                     f"text-transform:uppercase;letter-spacing:0.10em;border:1px solid {border};color:{color};'>"
                     f"{prefix}{text}</span>"
                 )
             secondary_html = (
-                "<div style='margin-top:8px;display:flex;flex-wrap:wrap;gap:6px;'>" + "".join(chips) + "</div>"
+                "<div style='margin-top:8px;display:flex;flex-wrap:wrap;gap:6px;'>"
+                + "".join(chips)
+                + "</div>"
             )
 
         # Footer badges (en mi catálogo, etc.)
@@ -3176,12 +3181,15 @@ with tab_awards:
                     border = "#60a5fa"
                     color = "#dbeafe"
                 chips.append(
-                    f"<span style='background:{bg};border-radius:999px;padding:3px 10px;font-size:0.72rem;"
+                    "<span style="
+                    f"'background:{bg};border-radius:999px;padding:3px 10px;font-size:0.72rem;"
                     f"text-transform:uppercase;letter-spacing:0.11em;border:1px solid {border};color:{color};'>"
                     f"{text}</span>"
                 )
             footer_html = (
-                "<div style='margin-top:10px;display:flex;flex-wrap:wrap;gap:6px;'>" + "".join(chips) + "</div>"
+                "<div style='margin-top:10px;display:flex;flex-wrap:wrap;gap:6px;'>"
+                + "".join(chips)
+                + "</div>"
             )
 
         # IMDb y reseñas
@@ -3189,27 +3197,26 @@ with tab_awards:
         if imdb_rating is not None and not pd.isna(imdb_rating):
             imdb_block += f"IMDb: {float(imdb_rating):.1f}<br>"
         if imdb_url:
-            imdb_block += f'<a href="{imdb_url}" target="_blank">Ver en mi ficha de IMDb</a><br>'
+            imdb_block += f"<a href='{imdb_url}' target='_blank'>Ver en mi ficha de IMDb</a><br>"
         review_url = get_spanish_review_link(film_title, film_year)
         if review_url:
-            imdb_block += f'<a href="{review_url}" target="_blank">Reseñas en español</a>'
+            imdb_block += f"<a href='{review_url}' target='_blank'>Reseñas en español</a>"
 
-        card_html = f"""
-<div class="movie-card movie-card-grid"
-     style="border-color:{border_color};
-            box-shadow:
-                0 0 0 1px rgba(15,23,42,0.9),
-                0 0 26px {glow_color};">
-  {poster_html}
-  <div class="movie-title">{title_full}</div>
-  <div class="movie-sub">
-    {imdb_block}
-    {main_badge_html}
-    {secondary_html}
-    {footer_html}
-  </div>
-</div>
-"""
+        card_html = (
+            f"<div class='movie-card movie-card-grid' "
+            f"style='border-color:{border_color};"
+            "box-shadow:0 0 0 1px rgba(15,23,42,0.9),"
+            f"0 0 26px {glow_color};'>"
+            f"{poster_html}"
+            f"<div class='movie-title'>{title_full}</div>"
+            "<div class='movie-sub'>"
+            f"{imdb_block}"
+            f"{main_badge_html}"
+            f"{secondary_html}"
+            f"{footer_html}"
+            "</div>"
+            "</div>"
+        )
         return card_html
 
     # ----------------- Galería visual por categoría / ganadoras -----------------
@@ -3220,7 +3227,9 @@ with tab_awards:
     with col_gal1:
         show_winners_only = st.checkbox("Mostrar solo las películas ganadoras", value=False)
     with col_gal2:
-        st.caption("En modo normal se muestran **todos los nominados**, agrupados por categoría.")
+        pass  # dejamos la columna derecha libre
+
+    st.caption("En modo normal se muestran **todos los nominados**, agrupados por categoría.")
 
     year_block = ff.copy()
 
@@ -3248,7 +3257,7 @@ with tab_awards:
         if not winners_films:
             st.info("No hay películas ganadoras para este año con los filtros actuales.")
         else:
-            cards_html = ['<div class="movie-gallery-grid">']
+            cards_html = ["<div class='movie-gallery-grid'>"]
 
             for film, g in sorted(winners_films, key=lambda x: x[0]):
                 any_win = bool(g["IsWinner"].any())
@@ -3295,7 +3304,7 @@ with tab_awards:
                 cards_html.append(card_html)
 
             cards_html.append("</div>")
-            st.markdown("\n".join(cards_html), unsafe_allow_html=True)
+            st.markdown("".join(cards_html), unsafe_allow_html=True)
 
     # ---- MODO 2: galería completa por categoría (todos los nominados) ----
 
@@ -3310,19 +3319,18 @@ with tab_awards:
 
         for cat, g in year_block.groupby("CanonCat"):
             # Separación visual entre bloques de categoría
-            st.markdown(
-                f"""
-<div style="margin-top:2.0rem;margin-bottom:0.85rem;">
-  <h4 style="font-size:1.2rem;font-weight:700;letter-spacing:0.10em;text-transform:uppercase;
-             display:flex;align-items:center;gap:0.4rem;">
-    <span>🎞️</span><span>{cat}</span>
-  </h4>
-</div>
-""",
-                unsafe_allow_html=True,
+            heading_html = (
+                "<div style='margin-top:2.0rem;margin-bottom:0.85rem;'>"
+                "<h4 style='font-size:1.2rem;font-weight:700;letter-spacing:0.10em;"
+                "text-transform:uppercase;display:flex;align-items:center;gap:0.4rem;'>"
+                "<span>🎞️</span>"
+                f"<span>{cat}</span>"
+                "</h4>"
+                "</div>"
             )
+            st.markdown(heading_html, unsafe_allow_html=True)
 
-            cards_html = ['<div class="movie-gallery-grid">']
+            cards_html = ["<div class='movie-gallery-grid'>"]
 
             for _, row in g.iterrows():
                 film = str(row.get("Film") or "").strip()
@@ -3366,7 +3374,7 @@ with tab_awards:
                 cards_html.append(card_html)
 
             cards_html.append("</div>")
-            st.markdown("\n".join(cards_html), unsafe_allow_html=True)
+            st.markdown("".join(cards_html), unsafe_allow_html=True)
 
     # ----------------- Vista tabular resumida -----------------
 
@@ -3428,105 +3436,84 @@ with tab_awards:
             imdb_url = gfilm["CatalogURL"].dropna().iloc[0] if gfilm["CatalogURL"].notna().any() else None
             poster_url = posters_cache.get(selected_film)
 
-            # Cabecera de tarjeta expandida
-            sum_card = []
+            html = ""
 
-            sum_card.append(
-                f"""
-<div class="movie-card" style="
-    border-color:#38bdf8;
-    box-shadow:
-        0 0 0 1px rgba(15,23,42,0.9),
-        0 0 30px rgba(56,189,248,0.65);
-    margin-top:0.75rem;">
-  <div style="display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap;">
-"""
+            html += (
+                "<div class='movie-card' style='"
+                "border-color:#38bdf8;"
+                "box-shadow:0 0 0 1px rgba(15,23,42,0.9),0 0 30px rgba(56,189,248,0.65);"
+                "margin-top:0.75rem;'>"
+                "<div style='display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap;'>"
             )
 
-            # Póster a la izquierda
+            # Póster
             if poster_url:
-                sum_card.append(
-                    f"""
-    <div style="flex:0 0 150px;">
-      <div class="movie-poster-frame" style="width:150px;">
-        <img src="{poster_url}" alt="{selected_film}" class="movie-poster-img" />
-      </div>
-    </div>
-"""
+                html += (
+                    "<div style='flex:0 0 150px;'>"
+                    "<div class='movie-poster-frame' style='width:150px;'>"
+                    f"<img src='{poster_url}' alt='{selected_film}' class='movie-poster-img' />"
+                    "</div>"
+                    "</div>"
                 )
 
-            # Texto a la derecha
-            sum_card.append(
-                f"""
-    <div style="flex:1 1 260px;">
-      <div class="movie-title" style="font-size:1.1rem;margin-bottom:0.15rem;">
-        {selected_film} ({film_year})
-      </div>
-      <div class="movie-sub" style="font-size:0.9rem;">
-"""
+            # Texto principal
+            html += (
+                "<div style='flex:1 1 260px;'>"
+                f"<div class='movie-title' style='font-size:1.1rem;margin-bottom:0.15rem;'>"
+                f"{selected_film} ({film_year})"
+                "</div>"
+                "<div class='movie-sub' style='font-size:0.9rem;'>"
             )
 
-            # Resumen de notas + enlaces
             info_lines = []
             if imdb_rating is not None and not pd.isna(imdb_rating):
                 info_lines.append(f"IMDb: {float(imdb_rating):.1f}")
             if my_rating is not None and not pd.isna(my_rating):
                 info_lines.append(f"Mi nota media: {float(my_rating):.1f}")
             if info_lines:
-                sum_card.append(" · ".join(info_lines) + "<br>")
+                html += " · ".join(info_lines) + "<br>"
 
             if imdb_url:
-                sum_card.append(f'<a href="{imdb_url}" target="_blank">Ver en mi ficha de IMDb</a><br>')
+                html += f"<a href='{imdb_url}' target='_blank'>Ver en mi ficha de IMDb</a><br>"
             review_url = get_spanish_review_link(selected_film, film_year)
             if review_url:
-                sum_card.append(f'<a href="{review_url}" target="_blank">Reseñas en español</a><br>')
+                html += f"<a href='{review_url}' target='_blank'>Reseñas en español</a><br>"
 
-            # Chips de resumen
-            sum_card.append(
-                f"""
-<div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px;">
-  <span style='background:rgba(34,197,94,0.18);border-radius:999px;padding:3px 10px;font-size:0.75rem;
-               text-transform:uppercase;letter-spacing:0.11em;border:1px solid #22c55e;color:#bbf7d0;'>
-    🏆 {n_wins} premio(s)
-  </span>
-  <span style='background:rgba(148,163,184,0.18);border-radius:999px;padding:3px 10px;font-size:0.75rem;
-               text-transform:uppercase;letter-spacing:0.11em;border:1px solid rgba(148,163,184,0.85);color:#e5e7eb;'>
-    ✦ {n_noms} nominación(es)
-  </span>
-"""
+            # Chips resumen
+            html += (
+                "<div style='margin-top:8px;display:flex;flex-wrap:wrap;gap:6px;'>"
+                "<span style='background:rgba(34,197,94,0.18);border-radius:999px;padding:3px 10px;"
+                "font-size:0.75rem;text-transform:uppercase;letter-spacing:0.11em;"
+                "border:1px solid #22c55e;color:#bbf7d0;'>"
+                f"🏆 {n_wins} premio(s)</span>"
+                "<span style='background:rgba(148,163,184,0.18);border-radius:999px;padding:3px 10px;"
+                "font-size:0.75rem;text-transform:uppercase;letter-spacing:0.11em;"
+                "border:1px solid rgba(148,163,184,0.85);color:#e5e7eb;'>"
+                f"✦ {n_noms} nominación(es)</span>"
             )
 
             if in_catalog:
                 txt = "En mi catálogo"
                 if my_rating is not None and not pd.isna(my_rating):
                     txt += f" · Mi nota: {my_rating:.1f}"
-                sum_card.append(
-                    f"""
-  <span style='background:rgba(234,179,8,0.18);border-radius:999px;padding:3px 10px;font-size:0.75rem;
-               text-transform:uppercase;letter-spacing:0.11em;border:1px solid #facc15;color:#fef9c3;'>
-    {txt}
-  </span>
-"""
+                html += (
+                    "<span style='background:rgba(234,179,8,0.18);border-radius:999px;padding:3px 10px;"
+                    "font-size:0.75rem;text-transform:uppercase;letter-spacing:0.11em;"
+                    "border:1px solid #facc15;color:#fef9c3;'>"
+                    f"{txt}</span>"
                 )
 
-            sum_card.append("</div>")  # cierre chips
-            sum_card.append("</div></div>")  # cierre texto + flex
+            html += "</div>"  # cierre chips
+            html += "</div></div>"  # cierre texto + flex
 
-            # Tabla visual de categorías
-            sum_card.append(
-                """
-  <div style="margin-top:14px;border-top:1px solid rgba(148,163,184,0.45);padding-top:10px;">
-    <div style="font-size:0.8rem;text-transform:uppercase;letter-spacing:0.16em;
-                color:#9ca3af;margin-bottom:6px;">
-      DETALLE DE NOMINACIONES
-    </div>
-"""
+            # Detalle de nominaciones
+            html += (
+                "<div style='margin-top:14px;border-top:1px solid rgba(148,163,184,0.45);padding-top:10px;'>"
+                "<div style='font-size:0.8rem;text-transform:uppercase;letter-spacing:0.16em;"
+                "color:#9ca3af;margin-bottom:6px;'>DETALLE DE NOMINACIONES</div>"
             )
 
-            # Ordenar categorías: ganadoras primero
             gfilm = gfilm.sort_values(["IsWinner", "CanonCat", "Nominee"], ascending=[False, True, True])
-
-            rows_html = []
             for _, r in gfilm.iterrows():
                 cat = str(r.get("CanonCat") or "").strip()
                 nominee = str(r.get("Nominee") or "").strip()
@@ -3549,21 +3536,19 @@ with tab_awards:
                         "border:1px solid rgba(148,163,184,0.7);color:#e5e7eb;'>Nominada</span>"
                     )
 
-                rows_html.append(
-                    f"""
-    <div style="display:flex;justify-content:space-between;align-items:center;
-                padding:4px 0;border-bottom:1px dashed rgba(31,41,55,0.7);">
-      <div style="font-size:0.86rem;color:#e5e7eb;">{left_text}</div>
-      <div>{badge}</div>
-    </div>
-"""
+                html += (
+                    "<div style='display:flex;justify-content:space-between;align-items:center;"
+                    "padding:4px 0;border-bottom:1px dashed rgba(31,41,55,0.7);'>"
+                    f"<div style='font-size:0.86rem;color:#e5e7eb;'>{left_text}</div>"
+                    f"<div>{badge}</div>"
+                    "</div>"
                 )
 
-            sum_card.extend(rows_html)
-            sum_card.append("  </div>")  # cierre detalle nominaciones
-            sum_card.append("</div>")  # cierre movie-card principal
+            html += "</div>"  # cierre detalle nominaciones
+            html += "</div>"  # cierre movie-card
 
-            st.markdown("\n".join(sum_card), unsafe_allow_html=True)
+            st.markdown(html, unsafe_allow_html=True)
+
 
 
 

@@ -2896,7 +2896,6 @@ def load_oscar_data_from_excel(path_xlsx="Oscar_Data_1927_today.xlsx"):
     return out
 
 
-
 # ============================================================
 #                     TAB 4: PREMIOS ÓSCAR (EXCEL)
 # ============================================================
@@ -3091,7 +3090,7 @@ with tab_awards:
         my_rating=None,
         imdb_rating=None,
         imdb_url=None,
-        tmdb_poster_url=None,
+        tmdb_info=None,
         main_badge_text=None,
         secondary_badges=None,
         footer_badges=None,
@@ -3104,11 +3103,21 @@ with tab_awards:
         """
         year_str = f" ({film_year})" if film_year and film_year > 0 else ""
         title_full = f"{film_title}{year_str}"
+        if is_winner:
+            title_full = f"🏆 {title_full}"
 
         border_color, glow_color = get_rating_colors(my_rating if pd.notna(my_rating) else imdb_rating)
         if is_winner:
             border_color = "#22c55e"
             glow_color = "rgba(34,197,94,0.65)"
+
+        tmdb_poster_url = None
+        tmdb_id = None
+        if tmdb_info:
+            tmdb_poster_url = tmdb_info.get("poster_url")
+            tmdb_id = tmdb_info.get("id")
+            if imdb_rating is None and tmdb_info.get("vote_average") is not None:
+                imdb_rating = tmdb_info.get("vote_average")
 
         # Póster
         if tmdb_poster_url:
@@ -3140,7 +3149,7 @@ with tab_awards:
                 "</div>"
             )
 
-        # Secondary badges (categorías/nominaciones) en modo "solo ganadoras"
+        # Secondary badges (categorías/nominaciones) en modo "solo ganadoras" o nominados
         secondary_html = ""
         if secondary_badges:
             chips = []
@@ -3200,7 +3209,26 @@ with tab_awards:
             imdb_block += f"<a href='{imdb_url}' target='_blank'>Ver en mi ficha de IMDb</a><br>"
         review_url = get_spanish_review_link(film_title, film_year)
         if review_url:
-            imdb_block += f"<a href='{review_url}' target='_blank'>Reseñas en español</a>"
+            imdb_block += f"<a href='{review_url}' target='_blank'>Reseñas en español</a><br>"
+
+        # Dónde verla (TMDb providers)
+        if tmdb_id:
+            providers = get_tmdb_providers(tmdb_id, country="CL")
+        else:
+            providers = None
+
+        if providers is None:
+            streaming_block = "Streaming (CL): Sin datos<br>"
+        else:
+            platforms = providers.get("platforms") or []
+            platforms_str = ", ".join(platforms) if platforms else "Sin datos para Chile (CL)"
+            link = providers.get("link")
+            streaming_block = f"Streaming (CL): {platforms_str}"
+            if link:
+                streaming_block += (
+                    f"<br><a href='{link}' target='_blank'>Ver streaming en TMDb (CL)</a>"
+                )
+            streaming_block += "<br>"
 
         card_html = (
             f"<div class='movie-card movie-card-grid' "
@@ -3211,6 +3239,7 @@ with tab_awards:
             f"<div class='movie-title'>{title_full}</div>"
             "<div class='movie-sub'>"
             f"{imdb_block}"
+            f"{streaming_block}"
             f"{main_badge_html}"
             f"{secondary_html}"
             f"{footer_html}"
@@ -3227,32 +3256,30 @@ with tab_awards:
     with col_gal1:
         show_winners_only = st.checkbox("Mostrar solo las películas ganadoras", value=False)
     with col_gal2:
-        pass  # dejamos la columna derecha libre
+        pass
 
     st.caption("En modo normal se muestran **todos los nominados**, agrupados por categoría.")
 
+    # Subconjunto del año (con filtros aplicados)
     year_block = ff.copy()
 
-    # Pre-cache posters por película para no llamar TMDb en cada fila
-    posters_cache = {}
+    # Pre-cache info TMDb por película para no llamar TMDb en cada fila
+    tmdb_cache = {}
     for film, g in year_block.groupby("Film"):
         first_row = g.iloc[0]
         y_film = first_row.get("FilmYearInt", year_selected)
         info = get_tmdb_basic_info(film, y_film)
-        posters_cache[film] = info.get("poster_url") if info else None
+        tmdb_cache[film] = info if info else None
 
     # ---- MODO 1: solo ganadoras → grid por película con resumen de categorías ----
 
     if show_winners_only:
         st.markdown("#### 🎖️ Películas ganadoras en este año")
 
-        # Agrupar por película: si tiene al menos una fila ganadora
         winners_films = []
-        for film, g in year_block.groupby("Film"):
-            has_win = bool(g["IsWinner"].any())
-            if not has_win:
-                continue
-            winners_films.append((film, g))
+        for film, g in ff.groupby("Film"):
+            if bool(g["IsWinner"].any()):
+                winners_films.append((film, g))
 
         if not winners_films:
             st.info("No hay películas ganadoras para este año con los filtros actuales.")
@@ -3296,7 +3323,7 @@ with tab_awards:
                     my_rating=my_rating,
                     imdb_rating=imdb_rating,
                     imdb_url=imdb_url,
-                    tmdb_poster_url=posters_cache.get(film),
+                    tmdb_info=tmdb_cache.get(film),
                     main_badge_text="WINNER 🏆",
                     secondary_badges=secondary_badges,
                     footer_badges=footer_badges,
@@ -3311,7 +3338,6 @@ with tab_awards:
     else:
         st.markdown("#### 🎬 Todos los nominados por categoría")
 
-        # Ordenar por categoría, ganador primero dentro de cada categoría
         year_block = year_block.sort_values(
             ["CanonCat", "IsWinner", "Film", "Nominee"],
             ascending=[True, False, True, True],
@@ -3343,17 +3369,14 @@ with tab_awards:
                 imdb_rating = row.get("MyIMDb")
                 imdb_url = row.get("CatalogURL")
 
-                # Badge principal (ganador)
                 main_badge_text = "WINNER 🏆" if is_winner else None
 
-                # Footer con info de catálogo
                 footer_badges = []
                 if in_catalog and pd.notna(my_rating):
                     footer_badges.append((f"En mi catálogo · Mi nota: {float(my_rating):.1f}", "catalog"))
                 elif in_catalog:
                     footer_badges.append(("En mi catálogo", "catalog"))
 
-                # Texto de persona / entidad
                 secondary_badges = []
                 if nominee:
                     secondary_badges.append((nominee, is_winner))
@@ -3366,7 +3389,7 @@ with tab_awards:
                     my_rating=my_rating,
                     imdb_rating=imdb_rating,
                     imdb_url=imdb_url,
-                    tmdb_poster_url=posters_cache.get(film),
+                    tmdb_info=tmdb_cache.get(film),
                     main_badge_text=main_badge_text,
                     secondary_badges=secondary_badges,
                     footer_badges=footer_badges,
@@ -3434,7 +3457,14 @@ with tab_awards:
             my_rating = gfilm["MyRating"].dropna().mean() if gfilm["MyRating"].notna().any() else None
             imdb_rating = gfilm["MyIMDb"].dropna().mean() if gfilm["MyIMDb"].notna().any() else None
             imdb_url = gfilm["CatalogURL"].dropna().iloc[0] if gfilm["CatalogURL"].notna().any() else None
-            poster_url = posters_cache.get(selected_film)
+            tmdb_info = tmdb_cache.get(selected_film)
+            poster_url = tmdb_info.get("poster_url") if tmdb_info else None
+            tmdb_id = tmdb_info.get("id") if tmdb_info else None
+
+            if tmdb_id:
+                providers = get_tmdb_providers(tmdb_id, country="CL")
+            else:
+                providers = None
 
             html = ""
 
@@ -3478,6 +3508,18 @@ with tab_awards:
             review_url = get_spanish_review_link(selected_film, film_year)
             if review_url:
                 html += f"<a href='{review_url}' target='_blank'>Reseñas en español</a><br>"
+
+            # Dónde verla
+            if providers is None:
+                html += "Streaming (CL): Sin datos<br>"
+            else:
+                platforms = providers.get("platforms") or []
+                platforms_str = ", ".join(platforms) if platforms else "Sin datos para Chile (CL)"
+                link = providers.get("link")
+                html += f"Streaming (CL): {platforms_str}"
+                if link:
+                    html += f"<br><a href='{link}' target='_blank'>Ver streaming en TMDb (CL)</a>"
+                html += "<br>"
 
             # Chips resumen
             html += (

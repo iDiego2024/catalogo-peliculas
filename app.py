@@ -2663,7 +2663,6 @@ def _build_oscar_card_html(row, categories_for_film=None, wins_for_film=None,
 """
     return card_html
 
-
 # ============================================================
 #                     TAB 4: PREMIOS ÓSCAR
 # ============================================================
@@ -2733,6 +2732,7 @@ def load_oscar_data_from_excel(path_xlsx="Oscar_Data_1927_today.xlsx"):
             break
 
     # Columna Winner (TRUE/FALSE, 1/0, YES, etc.)
+    import pandas as pd  # por si acaso
     winner_col = None
     for c in raw.columns:
         norm = re.sub(r"\W+", "", str(c)).lower()
@@ -2787,6 +2787,8 @@ def attach_catalog_to_oscar(osc_df, my_catalog_df):
       - MyIMDb
       - CatalogURL
     """
+    import pandas as pd
+
     out = osc_df.copy()
 
     if my_catalog_df is None or my_catalog_df.empty:
@@ -2840,39 +2842,49 @@ def build_oscar_movie_card_html(
 ):
     """
     Devuelve un bloque HTML para una tarjeta de película en la galería de Óscar.
+    La estructura está alineada con las tarjetas de tu catálogo.
     """
-    # Info TMDb
+    import math
+    import pandas as pd
+
+    # --- TMDb info ---
     poster_url = None
     tmdb_rating = None
     if tmdb_info:
         poster_url = tmdb_info.get("poster_url")
         tmdb_rating = tmdb_info.get("vote_average")
 
-    # Color borde
-    base_rating = my_rating if pd.notna(my_rating) else my_imdb
+    # --- Colores base según rating (mi nota > IMDb) ---
+    base_rating = None
+    if pd.notna(my_rating):
+        base_rating = my_rating
+    elif my_imdb is not None and not (isinstance(my_imdb, float) and math.isnan(my_imdb)):
+        base_rating = my_imdb
+
     border_color, glow_color = get_rating_colors(base_rating)
 
-    # Si es ganadora, verde nuclear
+    # Si es ganadora, borde verde nuclear
     if is_winner_in_this_context:
         border_color = "#22c55e"
-        glow_color = "rgba(34,197,94,0.75)"
+        glow_color = "rgba(34,197,94,0.80)"
 
     year_str = f" ({int(film_year)})" if pd.notna(film_year) else ""
 
-    # Links utilitarios
+    # --- Links utilitarios ---
     reseñas_url = get_spanish_review_link(film_title, film_year)
-    imdb_link_html = (
-        f'<a href="{imdb_url}" target="_blank">Ver en mi ficha de IMDb</a>'
-        if isinstance(imdb_url, str) and imdb_url.startswith("http")
-        else ""
-    )
     reseñas_html = (
         f'<a href="{reseñas_url}" target="_blank">Reseñas en español</a>'
         if reseñas_url
         else ""
     )
 
-    # Streaming
+    imdb_link_html = (
+        f'<a href="{imdb_url}" target="_blank">Ver en mi ficha de IMDb</a>'
+        if isinstance(imdb_url, str) and imdb_url.startswith("http")
+        else ""
+    )
+
+    # --- Streaming (CL desde TMDb) ---
     if providers_info:
         platforms = providers_info.get("platforms") or []
         platforms_str = ", ".join(platforms) if platforms else "Sin datos para Chile (CL)"
@@ -2881,35 +2893,41 @@ def build_oscar_movie_card_html(
         platforms_str = "Sin datos para Chile (CL)"
         streaming_link = None
 
-    streaming_html = f"Streaming (CL): {platforms_str}"
     if streaming_link:
-        streaming_html += f'<br><a href="{streaming_link}" target="_blank">Ver streaming en TMDb (CL)</a>'
+        streaming_html = (
+            f"Streaming (CL): {platforms_str}<br>"
+            f'<a href="{streaming_link}" target="_blank">Ver streaming en TMDb (CL)</a>'
+        )
+    else:
+        streaming_html = f"Streaming (CL): {platforms_str}"
 
-    # Badges
+    # --- Badges: winner / en mi catálogo ---
     winner_badge = ""
     if is_winner_in_this_context:
         winner_badge = (
-            "<div style='margin-top:6px;display:flex;flex-wrap:wrap;gap:4px;'>"
             "<span style='background:rgba(34,197,94,0.20);border-radius:999px;"
-            "padding:2px 8px;font-size:0.7rem;text-transform:uppercase;"
+            "padding:3px 10px;font-size:0.72rem;text-transform:uppercase;"
             "letter-spacing:0.12em;border:1px solid #22c55e;color:#bbf7d0;'>"
-            "WINNER 🏆</span></div>"
+            "WINNER 🏆</span>"
         )
 
     catalog_badge = ""
     if in_my_catalog:
-        rating_txt = f"{float(my_rating):.1f}" if pd.notna(my_rating) else "?"
+        if pd.notna(my_rating):
+            rating_txt = f"{float(my_rating):.1f}"
+        else:
+            rating_txt = "?"
         catalog_badge = (
-            "<div style='margin-top:6px;display:flex;flex-wrap:wrap;gap:4px;'>"
             "<span style='background:rgba(234,179,8,0.16);border-radius:999px;"
-            "padding:2px 8px;font-size:0.7rem;text-transform:uppercase;"
+            "padding:3px 10px;font-size:0.72rem;text-transform:uppercase;"
             "letter-spacing:0.12em;border:1px solid #facc15;color:#fef9c3;'>"
-            f"En mi catálogo · Mi nota: {rating_txt}</span></div>"
+            f"En mi catálogo · Mi nota: {rating_txt}</span>"
         )
 
-    # Personas nominadas
+    # --- Chips de personas nominadas/ganadoras ---
     clean_people = [
-        p for p in (people_list or [])
+        p
+        for p in (people_list or [])
         if isinstance(p, str) and p.strip() and p.strip().lower() != "nan"
     ]
     people_html = ""
@@ -2918,7 +2936,7 @@ def build_oscar_movie_card_html(
         for p in clean_people:
             chips.append(
                 "<span style='background:rgba(148,163,184,0.18);border-radius:999px;"
-                "padding:2px 9px;font-size:0.72rem;text-transform:uppercase;"
+                "padding:3px 9px;font-size:0.70rem;text-transform:uppercase;"
                 "letter-spacing:0.10em;border:1px solid rgba(148,163,184,0.85);"
                 "color:#e5e7eb;'>✦ " + p.replace("'", "’") + "</span>"
             )
@@ -2928,11 +2946,23 @@ def build_oscar_movie_card_html(
             + "</div>"
         )
 
-    # Ratings
-    imdb_txt = f"IMDb: {float(my_imdb):.1f}<br>" if pd.notna(my_imdb) else ""
-    tmdb_txt = f"TMDb: {float(tmdb_rating):.1f}<br>" if tmdb_rating is not None else ""
+    # --- Ratings text ---
+    imdb_txt = ""
+    if my_imdb is not None and not (isinstance(my_imdb, float) and math.isnan(my_imdb)):
+        imdb_txt = f"IMDb: {float(my_imdb):.1f}"
 
-    # Póster
+    tmdb_txt = ""
+    if tmdb_rating is not None and not (isinstance(tmdb_rating, float) and math.isnan(tmdb_rating)):
+        tmdb_txt = f"TMDb: {float(tmdb_rating):.1f}"
+
+    ratings_lines = []
+    if tmdb_txt:
+        ratings_lines.append(tmdb_txt)
+    if imdb_txt:
+        ratings_lines.append(imdb_txt)
+    ratings_html = "<br>".join(ratings_lines)
+
+    # --- Poster ---
     if isinstance(poster_url, str) and poster_url:
         poster_html = (
             "<div class='movie-poster-frame'>"
@@ -2948,40 +2978,49 @@ def build_oscar_movie_card_html(
             "</div></div>"
         )
 
-    # Construimos la tarjeta de forma explícita para evitar ternarios raros
-    parts = []
-    parts.append(
-        "<div class='movie-card movie-card-grid' "
-        "style='max-width:230px;border-color:"
-        + border_color
-        + ";box-shadow:0 0 0 1px rgba(15,23,42,0.9),0 0 26px "
-        + glow_color
-        + ";'>"
+    # --- Bloque principal ---
+    badges_row = ""
+    badges = [b for b in [winner_badge, catalog_badge] if b]
+    if badges:
+        badges_row = (
+            "<div style='margin-top:8px;display:flex;flex-wrap:wrap;gap:8px;'>"
+            + "".join(badges)
+            + "</div>"
+        )
+
+    # Texto de categoría
+    category_block = (
+        "<span style='font-size:0.78rem;color:#9ca3af;'>Categoría(s):</span><br>"
+        f"<span style='font-size:0.82rem;font-weight:500;'>{category_text}</span>"
     )
-    parts.append(poster_html)
-    parts.append(f"<div class='movie-title'>{film_title}{year_str}</div>")
-    parts.append("<div class='movie-sub'>")
 
-    # ratings
-    if imdb_txt or tmdb_txt:
-        parts.append(imdb_txt + tmdb_txt)
-
-    # enlaces
-    if imdb_link_html:
-        parts.append(imdb_link_html + "<br>")
+    # Sección de links
+    links_block_parts = []
     if reseñas_html:
-        parts.append(reseñas_html + "<br>")
+        links_block_parts.append(reseñas_html)
+    if imdb_link_html:
+        links_block_parts.append(imdb_link_html)
+    links_block = "<br>".join(links_block_parts)
 
-    parts.append(streaming_html + "<br><br>")
-    parts.append("<span style='font-size:0.78rem;color:#9ca3af;'>Categoría(s):</span><br>")
-    parts.append(f"<span style='font-size:0.82rem;font-weight:500;'>{category_text}</span>")
-    parts.append(winner_badge)
-    parts.append(catalog_badge)
-    parts.append(people_html)
-
-    parts.append("</div></div>")  # cierre movie-sub y movie-card
-
-    return "".join(parts)
+    # Construcción final
+    card_html = f"""
+<div class="movie-card movie-card-grid"
+     style="border-color:{border_color};
+            box-shadow:0 0 0 1px rgba(15,23,42,0.9),
+                       0 0 26px {glow_color};">
+  {poster_html}
+  <div class="movie-title">{film_title}{year_str}</div>
+  <div class="movie-sub">
+    {ratings_html}<br>
+    {links_block}<br>
+    {streaming_html}<br><br>
+    {category_block}
+    {badges_row}
+    {people_html}
+  </div>
+</div>
+"""
+    return card_html
 
 
 with tab_awards:
@@ -3099,7 +3138,7 @@ with tab_awards:
         "En modo ganadores se muestran sólo las películas que ganan al menos un premio en el año."
     )
 
-    # Cache ligero para TMDb y proveedores
+    # Cache ligero para TMDb y proveedores (por año de vista)
     tmdb_cache = {}
     providers_cache = {}
 
@@ -3145,12 +3184,7 @@ with tab_awards:
                 )
 
                 grouped = cat_rows.groupby(["Film", "FilmYear"], dropna=False)
-
-                cards_html = [
-                    "<div class='movie-gallery-grid' "
-                    "style='display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));"
-                    "gap:18px;align-items:flex-start;'>"
-                ]
+                cards_html = ["<div class='movie-gallery-grid'>"]
 
                 for (film_title, film_year), g in grouped:
                     people = g["PersonName"].dropna().unique().tolist()
@@ -3161,7 +3195,9 @@ with tab_awards:
                     my_imdb = g["MyIMDb"].dropna().iloc[0] if g["MyIMDb"].notna().any() else None
                     imdb_url = g["CatalogURL"].dropna().iloc[0] if g["CatalogURL"].notna().any() else None
 
-                    tmdb_info, providers_info = get_tmdb_and_providers_for_title(film_title, film_year)
+                    tmdb_info, providers_info = get_tmdb_and_providers_for_title(
+                        film_title, film_year
+                    )
 
                     card_html = build_oscar_movie_card_html(
                         film_title=film_title,
@@ -3204,7 +3240,9 @@ with tab_awards:
                 imdb_url = g["CatalogURL"].dropna().iloc[0] if g["CatalogURL"].notna().any() else None
                 people = wins["PersonName"].dropna().unique().tolist()
 
-                tmdb_info, providers_info = get_tmdb_and_providers_for_title(film_title, film_year)
+                tmdb_info, providers_info = get_tmdb_and_providers_for_title(
+                    film_title, film_year
+                )
 
                 card_html = build_oscar_movie_card_html(
                     film_title=film_title,
@@ -3224,13 +3262,7 @@ with tab_awards:
             if not winner_cards:
                 st.info("No hay películas ganadoras para este año con los filtros actuales.")
             else:
-                html = (
-                    "<div class='movie-gallery-grid' "
-                    "style='display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));"
-                    "gap:18px;align-items:flex-start;'>"
-                    + "".join(winner_cards)
-                    + "</div>"
-                )
+                html = "<div class='movie-gallery-grid'>" + "".join(winner_cards) + "</div>"
                 st.markdown(html, unsafe_allow_html=True)
 
     # =====================================================
@@ -3243,6 +3275,8 @@ with tab_awards:
     if ff.empty:
         st.info("No hay datos para este año con los filtros actuales.")
     else:
+        import pandas as pd
+
         table_df = ff.copy().sort_values(
             ["Category", "IsWinner", "Film", "PersonName"],
             ascending=[True, False, True, True],
@@ -3315,6 +3349,8 @@ with tab_awards:
         if film_rows.empty:
             st.info("No encontré filas para esa película.")
         else:
+            import pandas as pd
+
             film_year_val = (
                 film_rows["FilmYear"].dropna().iloc[0]
                 if film_rows["FilmYear"].notna().any()
@@ -3323,7 +3359,9 @@ with tab_awards:
             n_wins = int(film_rows["IsWinner"].sum())
             n_noms = len(film_rows)
 
-            tmdb_info, providers_info = get_tmdb_and_providers_for_title(sel_film, film_year_val)
+            tmdb_info, providers_info = get_tmdb_and_providers_for_title(
+                sel_film, film_year_val
+            )
 
             in_my_catalog = bool(film_rows["InMyCatalog"].any())
             my_rating = (
@@ -3460,7 +3498,6 @@ with tab_awards:
             )
 
             st.markdown(card_html, unsafe_allow_html=True)
-
 
 
 

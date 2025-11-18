@@ -2673,12 +2673,12 @@ def load_oscar_data_from_excel(path_xlsx="Oscar_Data_1927_today.xlsx"):
     """
     Carga el Excel Oscar_Data_1927_today.xlsx y normaliza columnas para la app.
     Intenta detectar de forma robusta:
-      - Year_Film / Year Film / Year       -> FilmYear
+      - Year_Film / Year Film / Year     -> FilmYear
       - Year_Award / Year Award / Ceremony -> AwardYear
-      - Category / Award                   -> CategoryRaw
-      - Name / Nominee                     -> PersonName
-      - Film                               -> Film
-      - Winner*                            -> IsWinner (bool)
+      - Category / Award                 -> CategoryRaw
+      - Name / Nominee                   -> PersonName
+      - Film                             -> Film
+      - Winner*                          -> IsWinner (bool)
     """
     import pandas as pd
     import re
@@ -2698,7 +2698,7 @@ def load_oscar_data_from_excel(path_xlsx="Oscar_Data_1927_today.xlsx"):
     else:
         film_year = pd.Series([None] * len(raw))
 
-    # Año de ceremonia (no lo usamos mucho, pero lo guardamos)
+    # Año de ceremonia (por ahora solo lo guardamos)
     award_year_col = None
     for key in ["year_award", "year award", "award_year", "ceremony"]:
         if key in cols_lower:
@@ -2785,7 +2785,7 @@ def attach_catalog_to_oscar(osc_df, my_catalog_df):
       - InMyCatalog
       - MyRating
       - MyIMDb
-      - CatalogURL (link IMDb de tu catálogo)
+      - CatalogURL
     """
     out = osc_df.copy()
 
@@ -2801,11 +2801,7 @@ def attach_catalog_to_oscar(osc_df, my_catalog_df):
         cat["NormTitle"] = cat["Title"].apply(normalize_title)
     if "YearInt" not in cat.columns:
         if "Year" in cat.columns:
-            cat["YearInt"] = (
-                pd.to_numeric(cat["Year"], errors="coerce")
-                .fillna(-1)
-                .astype(int)
-            )
+            cat["YearInt"] = pd.to_numeric(cat["Year"], errors="coerce").fillna(-1).astype(int)
         else:
             cat["YearInt"] = -1
 
@@ -2833,10 +2829,642 @@ def build_oscar_movie_card_html(
     film_title,
     film_year,
     category_text,
-    people
+    people_list,
+    is_winner_in_this_context,
+    in_my_catalog=False,
+    my_rating=None,
+    my_imdb=None,
+    imdb_url=None,
+    tmdb_info=None,
+    providers_info=None,
+):
+    """
+    Devuelve un bloque HTML para una tarjeta de película en la galería de Óscar.
+    """
+    # Info TMDb
+    poster_url = None
+    tmdb_rating = None
+    if tmdb_info:
+        poster_url = tmdb_info.get("poster_url")
+        tmdb_rating = tmdb_info.get("vote_average")
+
+    # Color borde
+    base_rating = my_rating if pd.notna(my_rating) else my_imdb
+    border_color, glow_color = get_rating_colors(base_rating)
+
+    # Si es ganadora, verde nuclear
+    if is_winner_in_this_context:
+        border_color = "#22c55e"
+        glow_color = "rgba(34,197,94,0.75)"
+
+    year_str = f" ({int(film_year)})" if pd.notna(film_year) else ""
+
+    # Links utilitarios
+    reseñas_url = get_spanish_review_link(film_title, film_year)
+    imdb_link_html = (
+        f'<a href="{imdb_url}" target="_blank">Ver en mi ficha de IMDb</a>'
+        if isinstance(imdb_url, str) and imdb_url.startswith("http")
+        else ""
+    )
+    reseñas_html = (
+        f'<a href="{reseñas_url}" target="_blank">Reseñas en español</a>'
+        if reseñas_url
+        else ""
+    )
+
+    # Streaming
+    if providers_info:
+        platforms = providers_info.get("platforms") or []
+        platforms_str = ", ".join(platforms) if platforms else "Sin datos para Chile (CL)"
+        streaming_link = providers_info.get("link")
+    else:
+        platforms_str = "Sin datos para Chile (CL)"
+        streaming_link = None
+
+    streaming_html = f"Streaming (CL): {platforms_str}"
+    if streaming_link:
+        streaming_html += f'<br><a href="{streaming_link}" target="_blank">Ver streaming en TMDb (CL)</a>'
+
+    # Badges
+    winner_badge = ""
+    if is_winner_in_this_context:
+        winner_badge = (
+            "<div style='margin-top:6px;display:flex;flex-wrap:wrap;gap:4px;'>"
+            "<span style='background:rgba(34,197,94,0.20);border-radius:999px;"
+            "padding:2px 8px;font-size:0.7rem;text-transform:uppercase;"
+            "letter-spacing:0.12em;border:1px solid #22c55e;color:#bbf7d0;'>"
+            "WINNER 🏆</span></div>"
+        )
+
+    catalog_badge = ""
+    if in_my_catalog:
+        rating_txt = f"{float(my_rating):.1f}" if pd.notna(my_rating) else "?"
+        catalog_badge = (
+            "<div style='margin-top:6px;display:flex;flex-wrap:wrap;gap:4px;'>"
+            "<span style='background:rgba(234,179,8,0.16);border-radius:999px;"
+            "padding:2px 8px;font-size:0.7rem;text-transform:uppercase;"
+            "letter-spacing:0.12em;border:1px solid #facc15;color:#fef9c3;'>"
+            f"En mi catálogo · Mi nota: {rating_txt}</span></div>"
+        )
+
+    # Personas nominadas
+    clean_people = [
+        p for p in (people_list or [])
+        if isinstance(p, str) and p.strip() and p.strip().lower() != "nan"
+    ]
+    people_html = ""
+    if clean_people:
+        chips = []
+        for p in clean_people:
+            chips.append(
+                "<span style='background:rgba(148,163,184,0.18);border-radius:999px;"
+                "padding:2px 9px;font-size:0.72rem;text-transform:uppercase;"
+                "letter-spacing:0.10em;border:1px solid rgba(148,163,184,0.85);"
+                "color:#e5e7eb;'>✦ " + p.replace("'", "’") + "</span>"
+            )
+        people_html = (
+            "<div style='margin-top:8px;display:flex;flex-wrap:wrap;gap:6px;'>"
+            + "".join(chips)
+            + "</div>"
+        )
+
+    # Ratings
+    imdb_txt = f"IMDb: {float(my_imdb):.1f}<br>" if pd.notna(my_imdb) else ""
+    tmdb_txt = f"TMDb: {float(tmdb_rating):.1f}<br>" if tmdb_rating is not None else ""
+
+    # Póster
+    if isinstance(poster_url, str) and poster_url:
+        poster_html = (
+            "<div class='movie-poster-frame'>"
+            f"<img src='{poster_url}' alt='{film_title}' class='movie-poster-img' />"
+            "</div>"
+        )
+    else:
+        poster_html = (
+            "<div class='movie-poster-frame'>"
+            "<div class='movie-poster-placeholder'>"
+            "<div class='film-reel-icon'>🎞️</div>"
+            "<div class='film-reel-text'>Sin póster</div>"
+            "</div></div>"
+        )
+
+    # Construimos la tarjeta de forma explícita para evitar ternarios raros
+    parts = []
+    parts.append(
+        "<div class='movie-card movie-card-grid' "
+        "style='max-width:230px;border-color:"
+        + border_color
+        + ";box-shadow:0 0 0 1px rgba(15,23,42,0.9),0 0 26px "
+        + glow_color
+        + ";'>"
+    )
+    parts.append(poster_html)
+    parts.append(f"<div class='movie-title'>{film_title}{year_str}</div>")
+    parts.append("<div class='movie-sub'>")
+
+    # ratings
+    if imdb_txt or tmdb_txt:
+        parts.append(imdb_txt + tmdb_txt)
+
+    # enlaces
+    if imdb_link_html:
+        parts.append(imdb_link_html + "<br>")
+    if reseñas_html:
+        parts.append(reseñas_html + "<br>")
+
+    parts.append(streaming_html + "<br><br>")
+    parts.append("<span style='font-size:0.78rem;color:#9ca3af;'>Categoría(s):</span><br>")
+    parts.append(f"<span style='font-size:0.82rem;font-weight:500;'>{category_text}</span>")
+    parts.append(winner_badge)
+    parts.append(catalog_badge)
+    parts.append(people_html)
+
+    parts.append("</div></div>")  # cierre movie-sub y movie-card
+
+    return "".join(parts)
+
+
+with tab_awards:
+    st.markdown("## 🏆 Premios de la Academia (usando Oscar_Data_1927_today.xlsx)")
+
+    # ---------- Carga y merge con tu catálogo ----------
+    osc_raw = load_oscar_data_from_excel("Oscar_Data_1927_today.xlsx")
+    if osc_raw.empty:
+        st.error("No se pudo cargar Oscar_Data_1927_today.xlsx")
+        st.stop()
+
+    osc = attach_catalog_to_oscar(osc_raw, df)
+
+    # ---------- Filtros principales ----------
+    st.markdown("### 🧮 Filtros en premios")
+
+    col_years, col_cats, col_search = st.columns([2, 1.5, 2])
+
+    # Línea de tiempo de años (slider horizontal)
+    with col_years:
+        st.caption("Año de película (base Óscars)")
+        years_sorted = (
+            osc["FilmYear"]
+            .dropna()
+            .astype(int)
+            .sort_values()
+            .unique()
+            .tolist()
+        )
+        if not years_sorted:
+            st.error("No hay años de película válidos en el archivo de Óscar.")
+            st.stop()
+
+        min_year = int(min(years_sorted))
+        max_year = int(max(years_sorted))
+        year_selected = st.slider(
+            label="",
+            min_value=min_year,
+            max_value=max_year,
+            value=max_year,
+            step=1,
+            key="osc_year_slider",
+        )
+
+    with col_cats:
+        st.caption("Categorías (opcional)")
+        all_cats = (
+            osc["Category"]
+            .dropna()
+            .sort_values()
+            .unique()
+            .tolist()
+        )
+        cats_selected = st.multiselect(
+            "",
+            options=all_cats,
+            default=[],
+            key="osc_cat_multi",
+        )
+
+    with col_search:
+        st.caption("Buscar (película / persona / categoría)")
+        search_osc = st.text_input(
+            "",
+            placeholder="Ej: 'BEST PICTURE', 'Chalamet', 'Nolan'…",
+            key="osc_search_text",
+        )
+
+    # ---------- Filtrado para el año seleccionado ----------
+    ff = osc[osc["FilmYear"] == year_selected].copy()
+    ff = ff[ff["Film"].astype(str).str.strip() != ""]
+
+    if cats_selected:
+        ff = ff[ff["Category"].isin(cats_selected)]
+
+    if search_osc:
+        q = search_osc.strip().lower()
+        mask = (
+            ff["Category"].str.lower().str.contains(q, na=False)
+            | ff["PersonName"].str.lower().str.contains(q, na=False)
+            | ff["Film"].str.lower().str.contains(q, na=False)
+        )
+        ff = ff[mask]
+
+    # ---------- Métricas ----------
+    col_m1, col_m2, col_m3, col_m4 = st.columns(4)
+    with col_m1:
+        st.metric("Año seleccionado", int(year_selected))
+    with col_m2:
+        st.metric("Filas (nominaciones)", len(ff))
+    with col_m3:
+        st.metric("Categorías", ff["Category"].nunique())
+    with col_m4:
+        st.metric("Premios (Winner=TRUE)", int(ff["IsWinner"].sum()))
+
+    st.caption(
+        "Datos desde **Oscar_Data_1927_today.xlsx**. El borde verde marca a los ganadores. "
+        "Los chips dorados indican si la película está en tu catálogo."
+    )
+
+    # =====================================================
+    #              GALERÍA VISUAL POR CATEGORÍA
+    # =====================================================
+
+    st.markdown("### 🖼️ Galería visual por categoría")
+
+    show_only_winners = st.checkbox(
+        "Mostrar solo las películas ganadoras",
+        value=False,
+        key="osc_only_winners",
+    )
+
+    st.caption(
+        "En modo normal se muestran **todos los nominados**, agrupados por categoría. "
+        "En modo ganadores se muestran sólo las películas que ganan al menos un premio en el año."
+    )
+
+    # Cache ligero para TMDb y proveedores
+    tmdb_cache = {}
+    providers_cache = {}
+
+    def get_tmdb_and_providers_for_title(title, year):
+        key = (title, year)
+        if key in tmdb_cache:
+            return tmdb_cache[key], providers_cache.get(key)
+        info = get_tmdb_basic_info(title, year)
+        tmdb_cache[key] = info
+        if info and info.get("id"):
+            providers = get_tmdb_providers(info["id"], country="CL")
+        else:
+            providers = None
+        providers_cache[key] = providers
+        return info, providers
+
+    if ff.empty:
+        st.info("No hay datos para ese año con los filtros actuales.")
+    else:
+        # =========================
+        #   MODO: TODOS LOS NOMINADOS
+        # =========================
+        if not show_only_winners:
+            st.markdown("#### 🎬 Todos los nominados por categoría")
+            cats_in_year = (
+                ff["Category"]
+                .dropna()
+                .sort_values()
+                .unique()
+                .tolist()
+            )
+
+            for cat in cats_in_year:
+                cat_rows = ff[ff["Category"] == cat].copy()
+                if cat_rows.empty:
+                    continue
+
+                st.markdown(
+                    f"<div style='margin-top:26px;margin-bottom:16px;font-size:1.05rem;"
+                    f"font-weight:700;text-transform:uppercase;letter-spacing:0.12em;'>"
+                    f"🎞️ {cat}</div>",
+                    unsafe_allow_html=True,
+                )
+
+                grouped = cat_rows.groupby(["Film", "FilmYear"], dropna=False)
+
+                cards_html = [
+                    "<div class='movie-gallery-grid' "
+                    "style='display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));"
+                    "gap:18px;align-items:flex-start;'>"
+                ]
+
+                for (film_title, film_year), g in grouped:
+                    people = g["PersonName"].dropna().unique().tolist()
+                    is_winner_cat = bool(g["IsWinner"].any())
+
+                    in_my_catalog = bool(g["InMyCatalog"].any())
+                    my_rating = g["MyRating"].dropna().iloc[0] if g["MyRating"].notna().any() else None
+                    my_imdb = g["MyIMDb"].dropna().iloc[0] if g["MyIMDb"].notna().any() else None
+                    imdb_url = g["CatalogURL"].dropna().iloc[0] if g["CatalogURL"].notna().any() else None
+
+                    tmdb_info, providers_info = get_tmdb_and_providers_for_title(film_title, film_year)
+
+                    card_html = build_oscar_movie_card_html(
+                        film_title=film_title,
+                        film_year=film_year,
+                        category_text=cat,
+                        people_list=people,
+                        is_winner_in_this_context=is_winner_cat,
+                        in_my_catalog=in_my_catalog,
+                        my_rating=my_rating,
+                        my_imdb=my_imdb,
+                        imdb_url=imdb_url,
+                        tmdb_info=tmdb_info,
+                        providers_info=providers_info,
+                    )
+                    cards_html.append(card_html)
+
+                cards_html.append("</div>")
+                st.markdown("".join(cards_html), unsafe_allow_html=True)
+
+        # =========================
+        #   MODO: SÓLO PELÍCULAS GANADORAS
+        # =========================
+        else:
+            st.markdown("#### 🥇 Películas ganadoras en este año")
+
+            grouped_all = ff.groupby(["Film", "FilmYear"], dropna=False)
+            winner_cards = []
+
+            for (film_title, film_year), g in grouped_all:
+                wins = g[g["IsWinner"]]
+                if wins.empty:
+                    continue
+
+                cats_won = wins["Category"].dropna().unique().tolist()
+                cat_text = " · ".join(cats_won) if cats_won else "Ganadora"
+
+                in_my_catalog = bool(g["InMyCatalog"].any())
+                my_rating = g["MyRating"].dropna().iloc[0] if g["MyRating"].notna().any() else None
+                my_imdb = g["MyIMDb"].dropna().iloc[0] if g["MyIMDb"].notna().any() else None
+                imdb_url = g["CatalogURL"].dropna().iloc[0] if g["CatalogURL"].notna().any() else None
+                people = wins["PersonName"].dropna().unique().tolist()
+
+                tmdb_info, providers_info = get_tmdb_and_providers_for_title(film_title, film_year)
+
+                card_html = build_oscar_movie_card_html(
+                    film_title=film_title,
+                    film_year=film_year,
+                    category_text=cat_text,
+                    people_list=people,
+                    is_winner_in_this_context=True,
+                    in_my_catalog=in_my_catalog,
+                    my_rating=my_rating,
+                    my_imdb=my_imdb,
+                    imdb_url=imdb_url,
+                    tmdb_info=tmdb_info,
+                    providers_info=providers_info,
+                )
+                winner_cards.append(card_html)
+
+            if not winner_cards:
+                st.info("No hay películas ganadoras para este año con los filtros actuales.")
+            else:
+                html = (
+                    "<div class='movie-gallery-grid' "
+                    "style='display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));"
+                    "gap:18px;align-items:flex-start;'>"
+                    + "".join(winner_cards)
+                    + "</div>"
+                )
+                st.markdown(html, unsafe_allow_html=True)
+
+    # =====================================================
+    #         TABLA DETALLADA (CATEGORÍAS / NOMINADOS)
+    # =====================================================
+
+    st.markdown("---")
+    st.markdown("### 📅 Vista por año (categorías, nominados y ganadores)")
+
+    if ff.empty:
+        st.info("No hay datos para este año con los filtros actuales.")
+    else:
+        table_df = ff.copy().sort_values(
+            ["Category", "IsWinner", "Film", "PersonName"],
+            ascending=[True, False, True, True],
+        )
+
+        pretty = table_df[["Category", "PersonName", "Film", "FilmYear", "IsWinner"]].copy()
+        pretty = pretty.rename(
+            columns={
+                "Category": "Categoría",
+                "PersonName": "Persona / Entidad",
+                "Film": "Película",
+                "FilmYear": "Año película",
+                "IsWinner": "Ganador",
+            }
+        )
+        pretty["Ganador"] = pretty["Ganador"].map({True: "🏆", False: ""})
+        pretty["Año película"] = pretty["Año película"].apply(
+            lambda v: "" if pd.isna(v) else str(int(v))
+        )
+
+        def highlight_winner(row):
+            if row.get("Ganador") == "🏆":
+                style = (
+                    "background-color: rgba(34,197,94,0.18); "
+                    "color:#ecfdf5; font-weight:600; border-left:3px solid #22c55e"
+                )
+            else:
+                style = ""
+            return [style] * len(row)
+
+        styled = (
+            pretty.style
+            .set_table_styles([{"selector": "th", "props": [("text-align", "left")]}])
+            .set_properties(**{"text-align": "left"})
+            .apply(highlight_winner, axis=1)
+        )
+        st.dataframe(styled, use_container_width=True, hide_index=True)
+
+    # =====================================================
+    #         DETALLE DE NOMINACIONES POR PELÍCULA
+    # =====================================================
+
+    st.markdown("---")
+    st.markdown("### 🎯 Detalle de nominaciones por película")
+
+    # Para el detalle usamos SIEMPRE todas las filas del año (osc),
+    # no sólo las filtradas por categoría/búsqueda, así el conteo de premios es correcto.
+    osc_year = osc[osc["FilmYear"] == year_selected].copy()
+    osc_year = osc_year[osc_year["Film"].astype(str).str.strip() != ""]
+
+    if osc_year.empty:
+        st.info("No hay películas para este año.")
+    else:
+        films_in_year = (
+            osc_year["Film"]
+            .dropna()
+            .astype(str)
+            .sort_values()
+            .unique()
+            .tolist()
+        )
+
+        sel_film = st.selectbox(
+            "Elegir una película del año",
+            options=films_in_year,
+            key="osc_detail_film",
+        )
+
+        film_rows = osc_year[osc_year["Film"] == sel_film].copy()
+        if film_rows.empty:
+            st.info("No encontré filas para esa película.")
+        else:
+            film_year_val = (
+                film_rows["FilmYear"].dropna().iloc[0]
+                if film_rows["FilmYear"].notna().any()
+                else None
+            )
+            n_wins = int(film_rows["IsWinner"].sum())
+            n_noms = len(film_rows)
+
+            tmdb_info, providers_info = get_tmdb_and_providers_for_title(sel_film, film_year_val)
+
+            in_my_catalog = bool(film_rows["InMyCatalog"].any())
+            my_rating = (
+                film_rows["MyRating"].dropna().iloc[0]
+                if film_rows["MyRating"].notna().any()
+                else None
+            )
+            my_imdb = (
+                film_rows["MyIMDb"].dropna().iloc[0]
+                if film_rows["MyIMDb"].notna().any()
+                else None
+            )
+            imdb_url = (
+                film_rows["CatalogURL"].dropna().iloc[0]
+                if film_rows["CatalogURL"].notna().any()
+                else None
+            )
+
+            if providers_info:
+                platforms = providers_info.get("platforms") or []
+                platforms_str = ", ".join(platforms) if platforms else "Sin datos para Chile (CL)"
+                streaming_link = providers_info.get("link")
+            else:
+                platforms_str = "Sin datos para Chile (CL)"
+                streaming_link = None
+
+            poster_url = tmdb_info.get("poster_url") if tmdb_info else None
+            if poster_url:
+                poster_html = (
+                    "<div class='movie-poster-frame' style='width:180px;'>"
+                    f"<img src='{poster_url}' alt='{sel_film}' class='movie-poster-img' />"
+                    "</div>"
+                )
+            else:
+                poster_html = (
+                    "<div class='movie-poster-frame' style='width:180px;'>"
+                    "<div class='movie-poster-placeholder'>"
+                    "<div class='film-reel-icon'>🎞️</div>"
+                    "<div class='film-reel-text'>Sin póster</div>"
+                    "</div></div>"
+                )
+
+            year_detail_str = f" ({int(film_year_val)})" if pd.notna(film_year_val) else ""
+
+            reseñas_url = get_spanish_review_link(sel_film, film_year_val)
+            reseñas_html = (
+                f'<a href="{reseñas_url}" target="_blank">Reseñas en español</a>'
+                if reseñas_url
+                else ""
+            )
+            imdb_link_html = (
+                f'<a href="{imdb_url}" target="_blank">Ver en mi ficha de IMDb</a>'
+                if isinstance(imdb_url, str) and imdb_url.startswith("http")
+                else ""
+            )
+
+            awards_badge = (
+                "<span style='background:rgba(34,197,94,0.18);border-radius:999px;"
+                "padding:4px 10px;font-size:0.78rem;text-transform:uppercase;"
+                "letter-spacing:0.12em;border:1px solid #22c55e;color:#bbf7d0;'>"
+                f"🏆 {n_wins} premio(s)</span>"
+            )
+            noms_badge = (
+                "<span style='background:rgba(148,163,184,0.18);border-radius:999px;"
+                "padding:4px 10px;font-size:0.78rem;text-transform:uppercase;"
+                "letter-spacing:0.12em;border:1px solid rgba(148,163,184,0.85);color:#e5e7eb;'>"
+                f"🎫 {n_noms} nominación(es)</span>"
+            )
+
+            catalog_badge = ""
+            if in_my_catalog:
+                rating_txt = f"{float(my_rating):.1f}" if pd.notna(my_rating) else "?"
+                catalog_badge = (
+                    "<span style='background:rgba(234,179,8,0.16);border-radius:999px;"
+                    "padding:4px 10px;font-size:0.78rem;text-transform:uppercase;"
+                    "letter-spacing:0.12em;border:1px solid #facc15;color:#fef9c3;'>"
+                    f"En mi catálogo · Mi nota: {rating_txt}</span>"
+                )
+
+            if streaming_link:
+                streaming_html_detail = (
+                    f"Streaming (CL): {platforms_str}<br>"
+                    f'<a href="{streaming_link}" target="_blank">Ver streaming en TMDb (CL)</a>'
+                )
+            else:
+                streaming_html_detail = f"Streaming (CL): {platforms_str}"
+
+            # Detalle nominación por fila
+            detalle_rows = []
+            for _, r in film_rows.sort_values(
+                ["Category", "IsWinner"], ascending=[True, False]
+            ).iterrows():
+                cat = str(r["Category"])
+                person = str(r["PersonName"]) if pd.notna(r["PersonName"]) else ""
+                label = f"{cat} · {person}" if person else cat
+                if bool(r["IsWinner"]):
+                    status_chip = (
+                        "<span style='background:rgba(34,197,94,0.20);border-radius:999px;"
+                        "padding:2px 10px;font-size:0.72rem;text-transform:uppercase;"
+                        "letter-spacing:0.12em;border:1px solid #22c55e;color:#bbf7d0;'>GANÓ</span>"
+                    )
+                else:
+                    status_chip = (
+                        "<span style='background:rgba(15,23,42,0.8);border-radius:999px;"
+                        "padding:2px 10px;font-size:0.72rem;text-transform:uppercase;"
+                        "letter-spacing:0.12em;border:1px solid rgba(148,163,184,0.7);color:#e5e7eb;'>"
+                        "Nominada</span>"
+                    )
+                detalle_rows.append(
+                    "<div style='display:flex;justify-content:space-between;align-items:center;"
+                    "padding:4px 0;border-bottom:1px dashed rgba(31,41,55,0.7);'>"
+                    f"<div style='font-size:0.86rem;color:#e5e7eb;'>{label}</div>"
+                    f"<div>{status_chip}</div></div>"
+                )
+
+            detalle_html = "".join(detalle_rows)
+
+            card_html = (
+                "<div style='border-radius:22px;border:1px solid rgba(148,163,184,0.45);"
+                "background:radial-gradient(circle at top left, rgba(15,23,42,0.98), rgba(15,23,42,0.92));"
+                "padding:18px 20px;margin-top:10px;box-shadow:0 22px 45px rgba(15,23,42,0.95);'>"
+                "<div style='display:flex;flex-wrap:wrap;gap:20px;'>"
+                f"<div style='flex:0 0 180px;'>{poster_html}</div>"
+                "<div style='flex:1 1 260px;'>"
+                f"<div class='movie-title' style='font-size:1.2rem;margin-bottom:0.15rem;'>{sel_film}{year_detail_str}</div>"
+                "<div class='movie-sub' style='font-size:0.9rem;margin-bottom:8px;'>"
+                f"{reseñas_html}<br>{streaming_html_detail}<br><br>{imdb_link_html}</div>"
+                "<div style='display:flex;flex-wrap:wrap;gap:10px;margin-top:4px;'>"
+                f"{awards_badge}{noms_badge}{catalog_badge}</div></div>"
+                "<div style='flex:1 1 320px;margin-top:4px;'>"
+                "<div style='font-size:0.82rem;letter-spacing:0.18em;text-transform:uppercase;"
+                "color:#9ca3af;margin-bottom:4px;'>Detalle de nominaciones</div>"
+                f"{detalle_html}</div></div></div>"
+            )
+
+            st.markdown(card_html, unsafe_allow_html=True)
 
 
 
+
+            
 
 
 # ============================================================

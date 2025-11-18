@@ -1664,579 +1664,617 @@ with tab_catalog:
 
 
 
-
+            # ============================================================
+            #                     TAB 2: ANÁLISIS
+            # ============================================================
+            
+            with tab_analysis:
+                st.markdown("## 📊 Análisis de mi catálogo")
+            
+                if df is None or df.empty:
+                    st.warning("Tu catálogo está vacío. Agrega algunas películas para ver análisis interesantes.")
+                    st.stop()
+            
+                # --------------------------------------------------------
+                # 1) Métricas globales rápidas
+                # --------------------------------------------------------
+                st.markdown("### ⚡ Resumen rápido")
+            
+                total_movies = len(df)
+                unique_years = df["Year"].nunique() if "Year" in df.columns else 0
+                mean_my_rating = df["Your Rating"].mean() if "Your Rating" in df.columns else None
+                mean_imdb_rating = df["IMDb Rating"].mean() if "IMDb Rating" in df.columns else None
+            
+                col_a1, col_a2, col_a3, col_a4 = st.columns(4)
+                with col_a1:
+                    st.metric("🎬 Películas en mi catálogo", total_movies)
+                with col_a2:
+                    st.metric("📅 Años distintos", unique_years)
+                with col_a3:
+                    if mean_my_rating is not None:
+                        st.metric("⭐️ Mi nota media", f"{mean_my_rating:.2f}")
+                    else:
+                        st.metric("⭐️ Mi nota media", "–")
+                with col_a4:
+                    if mean_imdb_rating is not None:
+                        st.metric("🌍 IMDb media", f"{mean_imdb_rating:.2f}")
+                    else:
+                        st.metric("🌍 IMDb media", "–")
+            
+                st.caption(
+                    "Estos valores se calculan a partir de las columnas **Your Rating**, **IMDb Rating** y **Year** "
+                    "de tu catálogo cargado."
+                )
+            
+                # --------------------------------------------------------
+                # 2) Evolución de las notas a lo largo del tiempo
+                # --------------------------------------------------------
+                st.markdown("### 📈 Evolución de mis notas por año")
+            
+                if "Year" in df.columns and "Your Rating" in df.columns:
+                    df_r = df.copy()
+                    df_r = df_r.dropna(subset=["Year", "Your Rating"])
+                    df_r["YearInt"] = pd.to_numeric(df_r["Year"], errors="coerce")
+                    df_r = df_r.dropna(subset=["YearInt"])
+                    df_r["YearInt"] = df_r["YearInt"].astype(int)
+            
+                    if not df_r.empty:
+                        agg_year = (
+                            df_r.groupby("YearInt")
+                            .agg(
+                                MeanMyRating=("Your Rating", "mean"),
+                                MeanIMDb=("IMDb Rating", "mean"),
+                                Count=("Title", "count"),
+                            )
+                            .reset_index()
+                            .sort_values("YearInt")
+                        )
+            
+                        base = alt.Chart(agg_year).encode(
+                            x=alt.X("YearInt:O", title="Año"),
+                            tooltip=[
+                                alt.Tooltip("YearInt:O", title="Año"),
+                                alt.Tooltip("MeanMyRating:Q", title="Mi nota media", format=".2f"),
+                                alt.Tooltip("MeanIMDb:Q", title="IMDb media", format=".2f"),
+                                alt.Tooltip("Count:Q", title="Películas"),
+                            ],
+                        )
+            
+                        line_my = base.mark_line(point=True).encode(
+                            y=alt.Y("MeanMyRating:Q", title="Nota"),
+                            color=alt.value("#fbbf24"),
+                        )
+            
+                        line_imdb = base.mark_line(point=True).encode(
+                            y=alt.Y("MeanIMDb:Q"),
+                            color=alt.value("#60a5fa"),
+                        )
+            
+                        chart = alt.layer(line_my, line_imdb).resolve_scale(y="shared").properties(
+                            height=320
+                        )
+            
+                        st.altair_chart(chart, use_container_width=True)
+                    else:
+                        st.info("No hay suficientes datos de año/nota para dibujar la evolución.")
+                else:
+                    st.info("Faltan columnas 'Year' o 'Your Rating' en tu catálogo para esta sección.")
+            
+                # --------------------------------------------------------
+                # 3) Distribución de mis notas vs IMDb
+                # --------------------------------------------------------
+                st.markdown("### 🎛️ Distribución de notas (yo vs IMDb)")
+            
+                if "Your Rating" in df.columns and "IMDb Rating" in df.columns:
+                    df_r2 = df.copy()
+                    df_r2 = df_r2.dropna(subset=["Your Rating", "IMDb Rating"])
+            
+                    if not df_r2.empty:
+                        # Tabla de diferencias
+                        df_r2["Diff (Yo - IMDb)"] = df_r2["Your Rating"] - df_r2["IMDb Rating"]
+            
+                        st.caption("Muestra algunos ejemplos de cuánto te alejas de la nota de IMDb.")
+                        st.dataframe(
+                            df_r2[["Title", "Year", "Your Rating", "IMDb Rating", "Diff (Yo - IMDb)"]]
+                            .sort_values("Diff (Yo - IMDb)", ascending=False)
+                            .head(20),
+                            use_container_width=True,
+                            hide_index=True,
+                        )
+            
+                        # Histograma de diferencias
+                        chart_diff = (
+                            alt.Chart(df_r2)
+                            .mark_bar()
+                            .encode(
+                                x=alt.X("Diff (Yo - IMDb):Q", bin=alt.Bin(maxbins=25), title="Diferencia (Mi nota - IMDb)"),
+                                y=alt.Y("count():Q", title="Número de películas"),
+                                tooltip=[
+                                    alt.Tooltip("count():Q", title="Películas"),
+                                    alt.Tooltip("Diff (Yo - IMDb):Q", bin=True),
+                                ],
+                            )
+                            .properties(height=260)
+                        )
+                        st.altair_chart(chart_diff, use_container_width=True)
+                    else:
+                        st.info("No hay suficientes datos de notas propias e IMDb para mostrar esta distribución.")
+                else:
+                    st.info("Faltan columnas 'Your Rating' o 'IMDb Rating' en tu catálogo para esta sección.")
+            
+                # --------------------------------------------------------
+                # 4) Análisis de géneros
+                # --------------------------------------------------------
+                st.markdown("### 🧬 Análisis por género")
+            
+                if "Genres" in df.columns:
+                    df_g = df.copy()
+                    df_g["Genres"] = df_g["Genres"].fillna("")
+                    df_g = explode_genres(df_g, "Genres")
+            
+                    if not df_g.empty:
+                        genre_stats = (
+                            df_g.groupby("Genres")
+                            .agg(
+                                Películas=("Title", "count"),
+                                Media_mi_nota=("Your Rating", "mean"),
+                                Media_IMDb=("IMDb Rating", "mean"),
+                            )
+                            .reset_index()
+                            .sort_values("Películas", ascending=False)
+                        )
+            
+                        genre_stats["Media_mi_nota"] = genre_stats["Media_mi_nota"].round(2)
+                        genre_stats["Media_IMDb"] = genre_stats["Media_IMDb"].round(2)
+            
+                        st.dataframe(genre_stats, use_container_width=True, hide_index=True)
+            
+                        # Top géneros (por nº de películas)
+                        top_n = 12
+                        top_genres = genre_stats.head(top_n)
+            
+                        chart_gen = (
+                            alt.Chart(top_genres)
+                            .transform_fold(
+                                ["Media_mi_nota", "Media_IMDb"],
+                                as_=["Tipo", "Nota"],
+                            )
+                            .mark_bar()
+                            .encode(
+                                x=alt.X("Genres:N", sort="-y", title="Género"),
+                                y=alt.Y("Nota:Q", title="Nota media"),
+                                color=alt.Color("Tipo:N", title="Fuente"),
+                                tooltip=["Genres", "Tipo", "Nota", "Películas"],
+                            )
+                            .properties(height=320)
+                        )
+                        st.altair_chart(chart_gen, use_container_width=True)
+                    else:
+                        st.info("No se pudo descomponer la columna de géneros en tu catálogo.")
+                else:
+                    st.info("No encontré la columna 'Genres' en tu catálogo.")
+            
+                # --------------------------------------------------------
+                # 5) Directores más presentes en mi catálogo
+                # --------------------------------------------------------
+                st.markdown("### 🎬 Directores más presentes")
+            
+                if "Directors" in df.columns:
+                    df_d = df.copy()
+                    df_d["Directors"] = df_d["Directors"].fillna("")
+                    df_d = explode_people(df_d, "Directors")  # Reutilizamos helper de personas
+            
+                    if not df_d.empty:
+                        dir_stats = (
+                            df_d.groupby("Directors")
+                            .agg(
+                                Películas=("Title", "count"),
+                                Media_mi_nota=("Your Rating", "mean"),
+                                Media_IMDb=("IMDb Rating", "mean"),
+                            )
+                            .reset_index()
+                            .sort_values("Películas", ascending=False)
+                        )
+            
+                        dir_stats["Media_mi_nota"] = dir_stats["Media_mi_nota"].round(2)
+                        dir_stats["Media_IMDb"] = dir_stats["Media_IMDb"].round(2)
+            
+                        top_dir = dir_stats.head(25)
+            
+                        chart_dir = (
+                            alt.Chart(top_dir)
+                            .mark_bar()
+                            .encode(
+                                x=alt.X("Películas:Q", title="Número de películas"),
+                                y=alt.Y("Directors:N", sort="-x", title="Director/a"),
+                                tooltip=["Directors", "Películas", "Media_mi_nota", "Media_IMDb"],
+                            )
+                            .properties(height=420)
+                        )
+                        st.altair_chart(chart_dir, use_container_width=True)
+            
+                        with st.expander("Ver tabla de directores completa"):
+                            st.dataframe(dir_stats, use_container_width=True, hide_index=True)
+                    else:
+                        st.info("No se pudo descomponer la columna 'Directors'.")
+                else:
+                    st.info("No encontré la columna 'Directors' en tu catálogo.")
+            
+                # --------------------------------------------------------
+                # 6) Países de producción
+                # --------------------------------------------------------
+                st.markdown("### 🌍 Países de producción")
+            
+                if "Countries" in df.columns:
+                    df_c = df.copy()
+                    df_c["Countries"] = df_c["Countries"].fillna("")
+                    df_c = explode_countries(df_c, "Countries")
+            
+                    if not df_c.empty:
+                        country_stats = (
+                            df_c.groupby("Countries")
+                            .agg(
+                                Películas=("Title", "count"),
+                                Media_mi_nota=("Your Rating", "mean"),
+                                Media_IMDb=("IMDb Rating", "mean"),
+                            )
+                            .reset_index()
+                            .sort_values("Películas", ascending=False)
+                        )
+            
+                        country_stats["Media_mi_nota"] = country_stats["Media_mi_nota"].round(2)
+                        country_stats["Media_IMDb"] = country_stats["Media_IMDb"].round(2)
+            
+                        top_countries = country_stats.head(20)
+            
+                        chart_countries = (
+                            alt.Chart(top_countries)
+                            .mark_bar()
+                            .encode(
+                                x=alt.X("Películas:Q", title="Número de películas"),
+                                y=alt.Y("Countries:N", sort="-x", title="País"),
+                                tooltip=["Countries", "Películas", "Media_mi_nota", "Media_IMDb"],
+                            )
+                            .properties(height=380)
+                        )
+                        st.altair_chart(chart_countries, use_container_width=True)
+            
+                        with st.expander("Ver tabla completa de países"):
+                            st.dataframe(country_stats, use_container_width=True, hide_index=True)
+                    else:
+                        st.info("No se pudo descomponer la columna 'Countries'.")
+                else:
+                    st.info("No encontré la columna 'Countries' en tu catálogo.")
+            
+                # --------------------------------------------------------
+                # 7) Premios según OMDb (si se cargaron)
+                # --------------------------------------------------------
+                st.markdown("### 🏅 Premios y nominaciones (según OMDb)")
+            
+                if "Awards" in df.columns:
+                    df_aw = df.copy()
+                    df_aw["Awards"] = df_aw["Awards"].fillna("")
+            
+                    with st.expander("Ver algunos ejemplos de texto de premios", expanded=False):
+                        st.write(
+                            df_aw[["Title", "Year", "Awards"]]
+                            .query("Awards != ''")
+                            .head(30)
+                            .reset_index(drop=True)
+                        )
+            
+                    df_aw["Any_Award_Info"] = df_aw["Awards"].str.strip() != ""
+                    total_with_award_info = df_aw["Any_Award_Info"].sum()
+                    st.caption(
+                        f"{total_with_award_info} películas de tu catálogo tienen alguna información de premios en OMDb."
+                    )
+            
+                    # Podríamos intentar detectar Óscars en texto, Globos de Oro, etc.
+                    # Ejemplo muy básico: buscar la palabra 'Oscar' u 'Academy Award'
+                    df_aw["Has_Oscar_word"] = df_aw["Awards"].str.contains(
+                        "Oscar|Academy Award", case=False, na=False
+                    )
+                    num_oscarish = df_aw["Has_Oscar_word"].sum()
+            
+                    col_aw1, col_aw2 = st.columns(2)
+                    with col_aw1:
+                        st.metric("Películas con texto de premios", int(total_with_award_info))
+                    with col_aw2:
+                        st.metric("Con mención a Óscar/Academy", int(num_oscarish))
+            
+                    with st.expander("Películas donde OMDb menciona Óscars / Academy Awards"):
+                        st.dataframe(
+                            df_aw[df_aw["Has_Oscar_word"]][["Title", "Year", "Awards"]],
+                            use_container_width=True,
+                            hide_index=True,
+                        )
+                else:
+                    st.info("No encontré la columna 'Awards' (texto de premios OMDb) en tu catálogo.")
+            
+                # =====================================================
+                #      ANÁLISIS CRUZADO CON PREMIOS ÓSCAR
+                # =====================================================
+                st.markdown("---")
+                st.markdown("### 🏆 Óscar vs mi catálogo")
+            
+                @st.cache_data
+                def load_oscars_for_analysis(path_xlsx: str = "Oscar_Data_1927_today.xlsx"):
+                    """Carga un subconjunto de datos de Oscar_Data_1927_today.xlsx para análisis.
+            
+                    Normaliza:
+                      - FilmYear
+                      - Category
+                      - Film
+                      - PersonName
+                      - IsWinner
+                    Y crea NormFilm para cruzar con tu catálogo.
+                    """
+                    import pandas as pd
+                    import re
+            
+                    try:
+                        raw = pd.read_excel(path_xlsx)
+                    except Exception:
+                        return pd.DataFrame()
+            
+                    if raw.empty:
+                        return pd.DataFrame()
+            
+                    cols_lower = {c.lower(): c for c in raw.columns}
+            
+                    # Año de película
+                    film_year_col = None
+                    for key in ["year_film", "year film", "film_year", "year"]:
+                        if key in cols_lower:
+                            film_year_col = cols_lower[key]
+                            break
+                    if film_year_col:
+                        film_year = pd.to_numeric(raw[film_year_col], errors="coerce")
+                    else:
+                        film_year = pd.Series([None] * len(raw))
+            
+                    # Categoría
+                    cat_col = None
+                    for key in ["category", "award"]:
+                        if key in cols_lower:
+                            cat_col = cols_lower[key]
+                            break
+                    if cat_col is None:
+                        cat_col = list(raw.columns)[0]
+            
+                    # Persona / entidad
+                    name_col = None
+                    for key in ["name", "nominee"]:
+                        if key in cols_lower:
+                            name_col = cols_lower[key]
+                            break
+            
+                    # Película
+                    film_col = None
+                    for key in ["film", "movie"]:
+                        if key in cols_lower:
+                            film_col = cols_lower[key]
+                            break
+            
+                    # Winner
+                    winner_col = None
+                    for c in raw.columns:
+                        import re as _re
+                        norm = _re.sub(r"\W+", "", str(c)).lower()
+                        if norm.startswith("winner"):
+                            winner_col = c
+                            break
+            
+                    if winner_col is not None:
+                        w = raw[winner_col]
+                        if pd.api.types.is_bool_dtype(w):
+                            is_winner = w.fillna(False)
+                        else:
+                            s = w.astype(str).str.strip().str.lower()
+                            is_winner = s.isin(
+                                ["true", "t", "1", "yes", "y", "winner", "ganador", "ganadora"]
+                            ) | (w == 1)
+                        is_winner = is_winner.fillna(False).astype(bool)
+                    else:
+                        is_winner = pd.Series([False] * len(raw), dtype=bool)
+            
+                    df_osc = pd.DataFrame(
+                        {
+                            "FilmYear": film_year,
+                            "Category": raw[cat_col].astype(str),
+                            "PersonName": raw[name_col].astype(str) if name_col else "",
+                            "Film": raw[film_col].astype(str) if film_col else "",
+                            "IsWinner": is_winner,
+                        }
+                    )
+            
+                    df_osc["FilmYear"] = pd.to_numeric(df_osc["FilmYear"], errors="coerce")
+                    df_osc["Category"] = df_osc["Category"].astype(str).str.strip().str.upper()
+                    df_osc["Film"] = df_osc["Film"].astype(str).str.strip()
+            
+                    # Normalización para cruce
+                    df_osc["NormFilm"] = df_osc["Film"].apply(normalize_title)
+            
+                    # Limpiamos filas vacías de título
+                    df_osc = df_osc[df_osc["Film"] != ""].copy()
+            
+                    return df_osc
+            
+                def attach_catalog_for_oscars_analysis(osc_df: pd.DataFrame, catalog_df: pd.DataFrame) -> pd.DataFrame:
+                    """Cruza el Excel de Óscar con tu catálogo por título normalizado + año."""
+                    if osc_df is None or osc_df.empty:
+                        return pd.DataFrame()
+                    out = osc_df.copy()
+            
+                    if catalog_df is None or catalog_df.empty:
+                        out["InMyCatalog"] = False
+                        out["MyRating"] = None
+                        out["MyIMDb"] = None
+                        return out
+            
+                    cat = catalog_df.copy()
+                    if "NormTitle" not in cat.columns:
+                        cat["NormTitle"] = cat["Title"].apply(normalize_title)
+                    if "YearInt" not in cat.columns:
+                        if "Year" in cat.columns:
+                            cat["YearInt"] = pd.to_numeric(cat["Year"], errors="coerce").fillna(-1).astype(int)
+                        else:
+                            cat["YearInt"] = -1
+            
+                    merged = out.merge(
+                        cat[["NormTitle", "YearInt", "Your Rating", "IMDb Rating"]],
+                        left_on=["NormFilm", "FilmYear"],
+                        right_on=["NormTitle", "YearInt"],
+                        how="left",
+                        suffixes=("", "_cat"),
+                    )
+            
+                    merged["InMyCatalog"] = merged["Your Rating"].notna()
+                    merged["MyRating"] = merged["Your Rating"]
+                    merged["MyIMDb"] = merged["IMDb Rating"]
+            
+                    merged = merged.drop(columns=["NormTitle", "YearInt", "Your Rating", "IMDb Rating"], errors="ignore")
+                    return merged
+            
+                osc_ana_raw = load_oscars_for_analysis()
+                if osc_ana_raw.empty:
+                    st.info("No se pudo cargar **Oscar_Data_1927_today.xlsx** para el análisis cruzado.")
+                else:
+                    osc_ana = attach_catalog_for_oscars_analysis(osc_ana_raw, df)
+            
+                    # -------- 1) Mis pendientes ganadores --------
+                    st.markdown("#### 🎯 Mis pendientes ganadores (winners que aún no he visto)")
+            
+                    winners = osc_ana[osc_ana["IsWinner"]].copy()
+                    if winners.empty:
+                        st.write("No hay registros de ganadores en el archivo de Óscar.")
+                    else:
+                        grp_w = (
+                            winners.groupby(["NormFilm", "Film", "FilmYear"], dropna=False)
+                            .agg(
+                                Premios=("IsWinner", "sum"),
+                                Nominaciones=("IsWinner", "size"),
+                                En_mi_cat=("InMyCatalog", "max"),
+                                Mi_nota=("MyRating", "max"),
+                            )
+                            .reset_index()
+                        )
+            
+                        pendientes = grp_w[~grp_w["En_mi_cat"]].copy()
+                        if pendientes.empty:
+                            st.success("Has visto todas las ganadoras que aparecen en el archivo de Óscar. Nada pendiente 🎉")
+                        else:
+                            pendientes["Año"] = pendientes["FilmYear"].fillna(0).astype(int)
+                            pendientes = pendientes.sort_values(["Año", "Premios"], ascending=[False, False])
+            
+                            st.caption("Películas que **ganan al menos un Óscar** y no están en tu catálogo.")
+                            st.dataframe(
+                                pendientes[["Film", "Año", "Premios", "Nominaciones"]],
+                                use_container_width=True,
+                                hide_index=True,
+                            )
+            
+                            # Distribución por década
+                            pendientes["Decada"] = (pendientes["Año"] // 10) * 10
+                            decada_counts = (
+                                pendientes[pendientes["Año"] > 0]
+                                .groupby("Decada")
+                                .size()
+                                .reset_index(name="Pendientes")
+                            )
+                            if not decada_counts.empty:
+                                chart_dec = (
+                                    alt.Chart(decada_counts)
+                                    .mark_bar()
+                                    .encode(
+                                        x=alt.X("Decada:O", title="Década (año de película)"),
+                                        y=alt.Y("Pendientes:Q", title="Ganadoras pendientes"),
+                                        tooltip=["Decada", "Pendientes"],
+                                    )
+                                    .properties(height=220)
+                                )
+                                st.altair_chart(chart_dec, use_container_width=True)
+            
+                    # -------- 2) Coincidencia con la Academia (mi nota a ganadoras vs nominadas) --------
+                    st.markdown("#### 🎭 ¿Coincido con la Academia?")
+            
+                    rated = osc_ana[osc_ana["InMyCatalog"] & osc_ana["MyRating"].notna()].copy()
+                    if rated.empty:
+                        st.write("Aún no hay suficientes películas de Óscar en tu catálogo con nota propia.")
+                    else:
+                        rated["Status"] = rated["IsWinner"].map({True: "Ganadoras", False: "Nominadas sin premio"})
+                        resumen = (
+                            rated.groupby("Status")
+                            .agg(
+                                Media_mi_nota=("MyRating", "mean"),
+                                Películas_distintas=("NormFilm", "nunique"),
+                            )
+                            .reset_index()
+                        )
+                        resumen["Media_mi_nota"] = resumen["Media_mi_nota"].round(2)
+            
+                        st.dataframe(resumen, use_container_width=True, hide_index=True)
+            
+                        chart_rating = (
+                            alt.Chart(resumen)
+                            .mark_bar()
+                            .encode(
+                                x=alt.X("Status:N", title=""),
+                                y=alt.Y("Media_mi_nota:Q", title="Nota media (mi catálogo)", scale=alt.Scale(domain=[0, 10])),
+                                tooltip=["Status", "Media_mi_nota", "Películas_distintas"],
+                                color=alt.Color("Status:N", legend=None),
+                            )
+                            .properties(height=260)
+                        )
+                        st.altair_chart(chart_rating, use_container_width=True)
+            
+                    # -------- 3) Talento con más premios en mi catálogo --------
+                    st.markdown("#### 👥 Talento con más Óscar en las pelis que sí he visto")
+            
+                    winners_seen = osc_ana[osc_ana["IsWinner"] & osc_ana["InMyCatalog"]].copy()
+                    if winners_seen.empty:
+                        st.write("Ninguna de las películas ganadoras en el Excel coincide todavía con tu catálogo.")
+                    else:
+                        winners_seen = winners_seen[
+                            winners_seen["PersonName"].notna()
+                            & (winners_seen["PersonName"].astype(str).str.strip() != "")
+                        ].copy()
+            
+                        if winners_seen.empty:
+                            st.write("El archivo de Óscar no trae nombres de personas suficientes para este análisis.")
+                        else:
+                            top_people = (
+                                winners_seen.groupby("PersonName")
+                                .agg(
+                                    Premios=("IsWinner", "sum"),
+                                    Peliculas_distintas=("NormFilm", "nunique"),
+                                )
+                                .reset_index()
+                            )
+                            top_people = top_people[top_people["Premios"] > 0].sort_values("Premios", ascending=False).head(15)
+            
+                            st.dataframe(top_people, use_container_width=True, hide_index=True)
+            
+                            chart_people = (
+                                alt.Chart(top_people)
+                                .mark_bar()
+                                .encode(
+                                    x=alt.X("Premios:Q", title="Premios Óscar (en mi catálogo)"),
+                                    y=alt.Y("PersonName:N", sort="-x", title="Persona"),
+                                    tooltip=["PersonName", "Premios", "Peliculas_distintas"],
+                                )
+                                .properties(height=380)
+                            )
+                            st.altair_chart(chart_people, use_container_width=True)
+            
 
             
-# ============================================================
-#                     TAB 2: ANÁLISIS
-# ============================================================
 
-with tab_analysis:
-    st.markdown("## 📊 Análisis y tendencias (según filtros, sin búsqueda)")
-    st.caption("Los gráficos usan sólo los filtros de la barra lateral (no la búsqueda de texto).")
 
-    with st.expander("Ver análisis y tendencias", expanded=False):
-        if filtered.empty:
-            st.info("No hay datos bajo los filtros actuales para mostrar gráficos.")
-        else:
-            col_a, col_b = st.columns(2)
-            with col_a:
-                st.markdown("**Películas por año**")
-                by_year = (
-                    filtered[filtered["Year"].notna()]
-                    .groupby("Year")
-                    .size()
-                    .reset_index(name="Count")
-                    .sort_values("Year")
-                )
-                if not by_year.empty:
-                    by_year_display = by_year.copy()
-                    by_year_display["Year"] = by_year_display["Year"].astype(int).astype(str)
-                    by_year_display = by_year_display.set_index("Year")
-                    st.line_chart(by_year_display)
-                else:
-                    st.write("Sin datos de año.")
 
-            with col_b:
-                st.markdown("**Distribución de mi nota (Your Rating)**")
-                if "Your Rating" in filtered.columns and filtered["Your Rating"].notna().any():
-                    ratings_counts = (
-                        filtered["Your Rating"]
-                        .round()
-                        .value_counts()
-                        .sort_index()
-                        .reset_index()
-                    )
-                    ratings_counts.columns = ["Rating", "Count"]
-                    ratings_counts["Rating"] = ratings_counts["Rating"].astype(int).astype(str)
-                    ratings_counts = ratings_counts.set_index("Rating")
-                    st.bar_chart(ratings_counts)
-                else:
-                    st.write("No hay notas mías disponibles.")
 
-            col_c, col_d = st.columns(2)
-            with col_c:
-                st.markdown("**Top géneros (por número de películas)**")
-                if "GenreList" in filtered.columns:
-                    genres_exploded = filtered.explode("GenreList")
-                    genres_exploded = genres_exploded[
-                        genres_exploded["GenreList"].notna() &
-                        (genres_exploded["GenreList"] != "")
-                    ]
-                    if not genres_exploded.empty:
-                        top_genres = (
-                            genres_exploded["GenreList"]
-                            .value_counts()
-                            .head(15)
-                            .reset_index()
-                        )
-                        top_genres.columns = ["Genre", "Count"]
-                        top_genres = top_genres.set_index("Genre")
-                        st.bar_chart(top_genres)
-                    else:
-                        st.write("No hay géneros disponibles.")
-                else:
-                    st.write("No se encontró información de géneros.")
 
-            with col_d:
-                st.markdown("**IMDb promedio por década**")
-                if "IMDb Rating" in filtered.columns and filtered["IMDb Rating"].notna().any():
-                    tmp = filtered[filtered["Year"].notna()].copy()
-                    if not tmp.empty:
-                        tmp["Decade"] = (tmp["Year"] // 10 * 10).astype(int)
-                        decade_imdb = (
-                            tmp.groupby("Decade")["IMDb Rating"]
-                            .mean()
-                            .reset_index()
-                            .sort_values("Decade")
-                        )
-                        decade_imdb["Decade"] = decade_imdb["Decade"].astype(str)
-                        decade_imdb = decade_imdb.set_index("Decade")
-                        st.line_chart(decade_imdb)
-                    else:
-                        st.write("No hay datos suficientes de año para calcular décadas.")
-                else:
-                    st.write("No hay IMDb Rating disponible.")
 
-            st.markdown("### 🔬 Análisis avanzado (mi nota vs IMDb)")
-
-            if (
-                "Your Rating" in filtered.columns
-                and "IMDb Rating" in filtered.columns
-            ):
-                corr_df = filtered[["Your Rating", "IMDb Rating"]].dropna()
-            else:
-                corr_df = pd.DataFrame()
-
-            col_adv1, col_adv2 = st.columns(2)
-
-            with col_adv1:
-                if not corr_df.empty and len(corr_df) > 1:
-                    corr = corr_df["Your Rating"].corr(corr_df["IMDb Rating"])
-                    st.metric("Correlación Pearson (mi nota vs IMDb)", f"{corr:.2f}")
-                else:
-                    st.metric("Correlación Pearson (mi nota vs IMDb)", "N/A")
-                st.write(
-                    "Valores cercanos a 1 indican que suelo coincidir con IMDb; "
-                    "cercanos a 0 indican independencia; negativos, que tiendo a ir en contra."
-                )
-
-            with col_adv2:
-                st.markdown("**Dispersión: IMDb vs mi nota**")
-                if not corr_df.empty:
-                    scatter_chart = (
-                        alt.Chart(corr_df.reset_index())
-                        .mark_circle(size=60, opacity=0.6)
-                        .encode(
-                            x=alt.X("IMDb Rating:Q", scale=alt.Scale(domain=[0, 10])),
-                            y=alt.Y("Your Rating:Q", scale=alt.Scale(domain=[0, 10])),
-                            tooltip=["IMDb Rating", "Your Rating"],
-                        )
-                        .properties(height=300)
-                    )
-                    st.altair_chart(scatter_chart, use_container_width=True)
-                else:
-                    st.write("No hay datos suficientes para el gráfico de dispersión.")
-
-            st.markdown("**Mapa de calor: mi nota media por género y década**")
-            if "GenreList" in filtered.columns and "Your Rating" in filtered.columns:
-                tmp = filtered.copy()
-                tmp = tmp[tmp["Year"].notna() & tmp["Your Rating"].notna()]
-                if not tmp.empty:
-                    tmp["Decade"] = (tmp["Year"] // 10 * 10).astype(int).astype(str)
-                    tmp_genres = tmp.explode("GenreList")
-                    tmp_genres = tmp_genres[
-                        tmp_genres["GenreList"].notna() &
-                        (tmp_genres["GenreList"] != "")
-                    ]
-                    if not tmp_genres.empty:
-                        heat_df = (
-                            tmp_genres
-                            .groupby(["GenreList", "Decade"])["Your Rating"]
-                            .mean()
-                            .reset_index()
-                        )
-                        heat_chart = (
-                            alt.Chart(heat_df)
-                            .mark_rect()
-                            .encode(
-                                x=alt.X("Decade:N", title="Década"),
-                                y=alt.Y("GenreList:N", title="Género"),
-                                color=alt.Color(
-                                    "Your Rating:Q",
-                                    title="Mi nota media",
-                                    scale=alt.Scale(scheme="viridis"),
-                                ),
-                                tooltip=["GenreList", "Decade", "Your Rating"],
-                            )
-                            .properties(height=400)
-                        )
-                        st.altair_chart(heat_chart, use_container_width=True)
-                    else:
-                        st.write("No hay datos suficientes de géneros para el mapa de calor.")
-                else:
-                    st.write("No hay datos suficientes (año + mi nota) para el mapa de calor.")
-            else:
-                st.write("Faltan columnas necesarias para el mapa de calor.")
-
-    # ===================== ANÁLISIS DE GUSTOS PERSONALES =====================
-
-    st.markdown("---")
-    st.markdown("## 🧠 Análisis de mis gustos personales")
-
-    with st.expander("Ver análisis de mis gustos personales", expanded=False):
-        if filtered.empty:
-            st.info("No hay datos bajo los filtros actuales para analizar mis gustos.")
-        else:
-            col_g1, col_g2 = st.columns(2)
-
-            with col_g1:
-                st.markdown("### 🎭 Géneros según mi gusto")
-
-                if "GenreList" in filtered.columns and "Your Rating" in filtered.columns:
-                    tmp = filtered.copy()
-                    tmp = tmp[tmp["Your Rating"].notna()]
-                    genres_exploded = tmp.explode("GenreList")
-                    genres_exploded = genres_exploded[
-                        genres_exploded["GenreList"].notna() &
-                        (genres_exploded["GenreList"] != "")
-                    ]
-                    if not genres_exploded.empty:
-                        genre_stats = (
-                            genres_exploded
-                            .groupby("GenreList")["Your Rating"]
-                            .agg(["count", "mean", "std"])
-                            .reset_index()
-                        )
-                        genre_stats = genre_stats[genre_stats["count"] >= 3]
-                        if not genre_stats.empty:
-                            genre_stats = genre_stats.sort_values("mean", ascending=False)
-                            genre_stats["mean"] = genre_stats["mean"].round(2)
-                            genre_stats["std"] = genre_stats["std"].fillna(0).round(2)
-
-                            st.dataframe(
-                                genre_stats.rename(
-                                    columns={
-                                        "GenreList": "Género",
-                                        "count": "Nº pelis",
-                                        "mean": "Mi nota media",
-                                        "std": "Desviación (σ)"
-                                    }
-                                ),
-                                hide_index=True,
-                                use_container_width=True
-                            )
-                        else:
-                            st.write("No hay géneros con suficientes películas para mostrar estadísticas.")
-                    else:
-                        st.write("No hay información suficiente de géneros para analizar mis gustos.")
-                else:
-                    st.write("Faltan columnas 'GenreList' o 'Your Rating' para este análisis.")
-
-            with col_g2:
-                st.markdown("### ⚖️ ¿Soy más exigente que IMDb?")
-
-                if "Your Rating" in filtered.columns and "IMDb Rating" in filtered.columns:
-                    diff_df = filtered[
-                        filtered["Your Rating"].notna() &
-                        filtered["IMDb Rating"].notna()
-                    ].copy()
-                    if not diff_df.empty:
-                        diff_df["Diff"] = diff_df["Your Rating"] - diff_df["IMDb Rating"]
-
-                        media_diff = diff_df["Diff"].mean()
-                        st.metric(
-                            "Diferencia media (Mi nota - IMDb)",
-                            f"{media_diff:.2f}"
-                        )
-
-                        st.write(
-                            "Valores positivos ⇒ suelo puntuar **más alto** que IMDb. "
-                            "Valores negativos ⇒ suelo ser **más duro** que IMDb."
-                        )
-
-                        hist = (
-                            diff_df["Diff"]
-                            .round(1)
-                            .value_counts()
-                            .sort_index()
-                            .reset_index()
-                        )
-                        hist.columns = ["Diff", "Count"]
-                        hist["Diff"] = hist["Diff"].astype(str)
-                        hist = hist.set_index("Diff")
-                        st.bar_chart(hist)
-                    else:
-                        st.write("No hay suficientes películas con ambas notas (mía e IMDb) para comparar.")
-                else:
-                    st.write("Faltan columnas 'Your Rating' o 'IMDb Rating' para comparar con IMDb.")
-
-            st.markdown("### ⏳ Evolución de mi exigencia con los años")
-
-            if (
-                "Year" in filtered.columns and
-                "Your Rating" in filtered.columns and
-                "IMDb Rating" in filtered.columns
-            ):
-                tmp = filtered.copy()
-                tmp = tmp[
-                    tmp["Year"].notna() &
-                    tmp["Your Rating"].notna() &
-                    tmp["IMDb Rating"].notna()
-                ]
-                if not tmp.empty:
-                    by_year_gusto = (
-                        tmp.groupby("Year")[["Your Rating", "IMDb Rating"]]
-                        .mean()
-                        .reset_index()
-                        .sort_values("Year")
-                    )
-                    by_year_gusto["Diff"] = by_year_gusto["Your Rating"] - by_year_gusto["IMDb Rating"]
-
-                    long_df = by_year_gusto.melt(
-                        id_vars="Year",
-                        value_vars=["Your Rating", "IMDb Rating"],
-                        var_name="Fuente",
-                        value_name="Rating"
-                    )
-                    long_df["Year"] = long_df["Year"].astype(int)
-
-                    chart = (
-                        alt.Chart(long_df)
-                        .mark_line(point=True)
-                        .encode(
-                            x=alt.X("Year:O", title="Año"),
-                            y=alt.Y("Rating:Q", title="Nota media"),
-                            color=alt.Color("Fuente:N", title="Fuente"),
-                            tooltip=["Year", "Fuente", "Rating"]
-                        )
-                        .properties(height=350)
-                    )
-                    st.altair_chart(chart, use_container_width=True)
-
-                    tmp["Decade"] = (tmp["Year"] // 10 * 10).astype(int)
-                    decade_diff = (
-                        tmp.groupby("Decade")
-                        .apply(lambda g: (g["Your Rating"] - g["IMDb Rating"]).mean())
-                        .reset_index(name="Diff media")
-                        .sort_values("Decade")
-                    )
-                    if not decade_diff.empty:
-                        decade_diff["Decade"] = decade_diff["Decade"].astype(int)
-                        st.write("**Diferencia media por década (Mi nota - IMDb):**")
-                        st.dataframe(
-                            decade_diff.rename(columns={"Decade": "Década"}),
-                            hide_index=True,
-                            use_container_width=True
-                        )
-                else:
-                    st.write("No hay suficientes datos (año + mis notas + IMDb) para analizar mi evolución.")
-            else:
-                st.write("Faltan columnas 'Year', 'Your Rating' o 'IMDb Rating' para analizar mi evolución en el tiempo.")
-
-    # ===================== PELÍCULAS INFRAVALORADAS =====================
-
-    st.markdown("---")
-    st.markdown("## 🔍 Descubrir películas que yo valoro más que IMDb")
-
-    with st.expander("Películas que puntúo muy alto y IMDb no tanto", expanded=False):
-        if "Your Rating" in df.columns and "IMDb Rating" in df.columns:
-            diff_df = df[df["Your Rating"].notna() & df["IMDb Rating"].notna()].copy()
-            if diff_df.empty:
-                st.write("No hay suficientes películas con ambas notas (mía e IMDb) para este análisis.")
-            else:
-                # BUG FIX: antes restaba contra df["IMDb Rating"] en vez de diff_df["IMDb Rating"]
-                diff_df["Diff"] = diff_df["Your Rating"] - diff_df["IMDb Rating"]
-                infraval = diff_df[(diff_df["Your Rating"] >= 8) & (diff_df["Diff"] >= 1.0)]
-                infraval = infraval.sort_values("Diff", ascending=False).head(30)
-
-                if infraval.empty:
-                    st.write("No se detectaron películas claramente infravaloradas con los criterios actuales.")
-                else:
-                    st.write(
-                        "Mostrando películas donde mi nota supera al menos en 1 punto a la de IMDb "
-                        "(y mi nota es ≥ 8)."
-                    )
-                    for _, row in infraval.iterrows():
-                        titulo = row.get("Title", "Sin título")
-                        year = row.get("Year", "")
-                        my_rating = row.get("Your Rating")
-                        imdb_rating = row.get("IMDb Rating")
-                        genres = row.get("Genres", "")
-                        url = row.get("URL", "")
-
-                        diff_val = float(my_rating) - float(imdb_rating)
-                        border_color, glow_color = get_rating_colors(my_rating)
-                        reseñas_url = get_spanish_review_link(titulo, year)
-                        reseñas_html = (
-                            f'<a href="{reseñas_url}" target="_blank">Reseñas en español</a>'
-                            if reseñas_url else ""
-                        )
-
-                        y_str = fmt_year(year)
-
-                        st.markdown(
-                            f"""
-<div class="movie-card" style="
-    border-color: {border_color};
-    box-shadow:
-        0 0 0 1px rgba(15,23,42,0.9),
-        0 0 26px {glow_color};
-    margin-bottom: 12px;
-">
-  <div class="movie-title">
-    {titulo}{f" ({y_str})" if y_str else ""}
-  </div>
-  <div class="movie-sub">
-    ⭐ Mi nota: {float(my_rating):.1f}<br>
-    IMDb: {float(imdb_rating):.1f}<br>
-    Diferencia (Mi − IMDb): {diff_val:.1f}<br>
-    {("<b>Géneros:</b> " + genres + "<br>") if isinstance(genres, str) and genres else ""}
-    {f'<a href="{url}" target="_blank">Ver en IMDb</a>' if isinstance(url, str) and url.startswith("http") else ""}<br>
-    <b>Reseñas:</b> {reseñas_html}
-  </div>
-</div>
-                            """,
-                            unsafe_allow_html=True,
-                        )
-        else:
-            st.write("Faltan columnas 'Your Rating' o 'IMDb Rating' para este análisis.")
-
-    # ===================== ESTADÍSTICAS OMDb (OSCARS, PALMA...) =====================
-
-    st.markdown("---")
-    st.markdown("## 🏆 Estadísticas de premios (OMDb, por película)")
-
-    with st.expander("Ver estadísticas de premios basadas en OMDb", expanded=False):
-        if not show_awards:
-            st.info("Activa 'Consultar premios en OMDb' en la barra lateral para usar esta sección.")
-        elif filtered.empty:
-            st.info("No hay datos bajo los filtros actuales.")
-        else:
-            if st.button("Calcular estadísticas de premios para las películas filtradas"):
-                awards_stats_df = compute_awards_table(filtered[["Title", "Year"]])
-                if awards_stats_df.empty:
-                    st.write("No se pudieron obtener datos de premios para estas películas.")
-                else:
-                    st.markdown("### Películas con más Oscars / premios totales")
-                    top_oscars = awards_stats_df.sort_values(
-                        ["oscars", "total_wins", "total_nominations"],
-                        ascending=[False, False, False]
-                    )
-                    show_top = top_oscars.head(30).copy()
-                    show_top["Year"] = show_top["Year"].apply(fmt_year)
-                    show_top = show_top.rename(
-                        columns={
-                            "Title": "Película",
-                            "Year": "Año",
-                            "oscars": "Oscars ganados",
-                            "oscars_nominated": "Nominaciones al Oscar",
-                            "total_wins": "Premios totales",
-                            "total_nominations": "Nominaciones totales",
-                            "palme_dor": "Palma de Oro",
-                        }
-                    )
-                    st.dataframe(show_top.drop(columns=["raw"]), hide_index=True, use_container_width=True)
-
-                    palme = awards_stats_df[awards_stats_df["palme_dor"]].copy()
-                    if not palme.empty:
-                        palme["Year"] = palme["Year"].apply(fmt_year)
-                        palme = palme.rename(
-                            columns={
-                                "Title": "Película",
-                                "Year": "Año",
-                                "oscars": "Oscars ganados",
-                                "total_wins": "Premios totales",
-                            }
-                        )
-                        st.markdown("### Películas con Palma de Oro")
-                        st.dataframe(
-                            palme[["Película", "Año", "Oscars ganados", "Premios totales"]],
-                            hide_index=True,
-                            use_container_width=True
-                        )
-                    else:
-                        st.write("Ninguna de las películas filtradas aparece con Palma de Oro en OMDb.")
-
-                    merged = awards_stats_df.merge(
-                        df[["Title", "Year", "Your Rating", "IMDb Rating"]],
-                        on=["Title", "Year"],
-                        how="left"
-                    )
-
-                    st.markdown("### 🎯 Cómo me llevo con los premios")
-
-                    loved_palme = merged[
-                        (merged["palme_dor"]) &
-                        (merged["Your Rating"].notna()) &
-                        (merged["Your Rating"] >= 8)
-                    ].copy()
-
-                    if not loved_palme.empty:
-                        loved_palme["Year"] = loved_palme["Year"].apply(fmt_year)
-                        loved_palme["Mi nota"] = loved_palme["Your Rating"].apply(fmt_rating)
-                        loved_palme["IMDb"] = loved_palme["IMDb Rating"].apply(fmt_rating)
-                        loved_palme = loved_palme.sort_values("Your Rating", ascending=False)
-                        st.markdown("#### 🌴 Palmas de Oro que amo (mi nota ≥ 8)")
-                        st.dataframe(
-                            loved_palme[["Title", "Year", "Mi nota", "IMDb", "oscars", "total_wins"]].rename(
-                                columns={
-                                    "Title": "Película",
-                                    "Year": "Año",
-                                    "oscars": "Oscars ganados",
-                                    "total_wins": "Premios totales",
-                                }
-                            ),
-                            hide_index=True,
-                            use_container_width=True
-                        )
-
-                    disliked_palme = merged[
-                        (merged["palme_dor"]) &
-                        (merged["Your Rating"].notna()) &
-                        (merged["Your Rating"] <= 6)
-                    ].copy()
-
-                    if not disliked_palme.empty:
-                        disliked_palme["Year"] = disliked_palme["Year"].apply(fmt_year)
-                        disliked_palme["Mi nota"] = disliked_palme["Your Rating"].apply(fmt_rating)
-                        disliked_palme["IMDb"] = disliked_palme["IMDb Rating"].apply(fmt_rating)
-                        disliked_palme = disliked_palme.sort_values("Your Rating", ascending=True)
-                        st.markdown("#### 🌴 Palmas de Oro que no me convencieron (mi nota ≤ 6)")
-                        st.dataframe(
-                            disliked_palme[["Title", "Year", "Mi nota", "IMDb", "oscars", "total_wins"]].rename(
-                                columns={
-                                    "Title": "Película",
-                                    "Year": "Año",
-                                    "oscars": "Oscars ganados",
-                                    "total_wins": "Premios totales",
-                                }
-                            ),
-                            hide_index=True,
-                            use_container_width=True
-                        )
-
-                    loved_oscars = merged[
-                        (merged["oscars"] >= 3) &
-                        (merged["Your Rating"].notna()) &
-                        (merged["Your Rating"] >= 8)
-                    ].copy()
-
-                    if not loved_oscars.empty:
-                        loved_oscars["Year"] = loved_oscars["Year"].apply(fmt_year)
-                        loved_oscars["Mi nota"] = loved_oscars["Your Rating"].apply(fmt_rating)
-                        loved_oscars["IMDb"] = loved_oscars["IMDb Rating"].apply(fmt_rating)
-                        loved_oscars = loved_oscars.sort_values(["oscars", "Your Rating"], ascending=[False, False])
-                        st.markdown("#### 🏆 Grandes ganadoras de Oscar que amo (Oscars ≥ 3 y mi nota ≥ 8)")
-                        st.dataframe(
-                            loved_oscars[["Title", "Year", "Mi nota", "IMDb", "oscars", "total_wins"]].rename(
-                                columns={
-                                    "Title": "Película",
-                                    "Year": "Año",
-                                    "oscars": "Oscars ganados",
-                                    "total_wins": "Premios totales",
-                                }
-                            ),
-                            hide_index=True,
-                            use_container_width=True
-                        )
-
-                    harsh_oscars = merged[
-                        (merged["oscars"] >= 3) &
-                        (merged["Your Rating"].notna()) &
-                        (merged["Your Rating"] <= 6)
-                    ].copy()
-
-                    if not harsh_oscars.empty:
-                        harsh_oscars["Year"] = harsh_oscars["Year"].apply(fmt_year)
-                        harsh_oscars["Mi nota"] = harsh_oscars["Your Rating"].apply(fmt_rating)
-                        harsh_oscars["IMDb"] = harsh_oscars["IMDb Rating"].apply(fmt_rating)
-                        harsh_oscars = harsh_oscars.sort_values("Your Rating", ascending=True)
-                        st.markdown("#### 🥊 Grandes ganadoras de Oscar donde fui duro (Oscars ≥ 3 y mi nota ≤ 6)")
-                        st.dataframe(
-                            harsh_oscars[["Title", "Year", "Mi nota", "IMDb", "oscars", "total_wins"]].rename(
-                                columns={
-                                    "Title": "Película",
-                                    "Year": "Año",
-                                    "oscars": "Oscars ganados",
-                                    "total_wins": "Premios totales",
-                                }
-                            ),
-                            hide_index=True,
-                            use_container_width=True
-                        )
-
-                    st.markdown("### Texto original de premios (OMDb)")
-                    raw_df = awards_stats_df[["Title", "Year", "raw"]].copy()
-                    raw_df["Year"] = raw_df["Year"].apply(fmt_year)
-                    raw_df = raw_df.rename(
-                        columns={
-                            "Title": "Película",
-                            "Year": "Año",
-                            "raw": "Premios (texto OMDb)"
-                        }
-                    )
-                    st.dataframe(raw_df, hide_index=True, use_container_width=True)
 
 # ============================================================
 #                     TAB 3: LISTA AFI

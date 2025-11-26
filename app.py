@@ -2959,14 +2959,37 @@ def build_oscar_movie_card_html(
             f"En mi catálogo · Mi nota: {rating_txt}</span>"
         )
 
-    # --- Personas nominadas/ganadoras (texto simple) ---
+    # --- Personas nominadas/ganadoras (texto simple y saneado) ---
     people_html = ""
     names = []
+
     for p in (people_list or []):
-        if isinstance(p, str):
-            name = p.strip()
-            if name and name.lower() != "nan":
-                names.append(html.escape(name).replace("'", "’"))
+        # nos aseguramos de tratar todo como string
+        if not isinstance(p, str):
+            p = str(p)
+
+        raw = p.strip()
+        if not raw or raw.lower() == "nan":
+            continue
+
+        # 1) quitamos cualquier etiqueta HTML que venga en el dato
+        #    (por ejemplo: <div ...>, </span>, etc.)
+        no_tags = re.sub(r"<[^>]*>", "", raw)
+
+        # 2) si por alguna razón el texto ya trae "Nominado(s):"
+        #    lo limpiamos para no duplicar
+        lowered = no_tags.lower()
+        if lowered.startswith("nominado(s):"):
+            no_tags = no_tags.split(":", 1)[-1].strip()
+
+        name = no_tags.strip()
+        if not name:
+            continue
+
+        # 3) escapamos por seguridad y normalizamos comillas
+        safe_name = html.escape(name).replace("'", "’")
+        names.append(safe_name)
+
     if names:
         people_html = (
             "<div style='margin-top:8px;font-size:0.78rem;color:#e5e7eb;'>"
@@ -2974,6 +2997,9 @@ def build_oscar_movie_card_html(
             + ", ".join(names) +
             "</div>"
         )
+
+
+
 
     # --- Ratings text ---
     imdb_txt = ""

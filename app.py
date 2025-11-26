@@ -1,3 +1,4 @@
+import html  # para escapar texto en los chips de personas
 import streamlit as st
 import pandas as pd
 import requests
@@ -2956,8 +2957,9 @@ def build_oscar_movie_card_html(
         )
 
     # --- Chips de personas nominadas/ganadoras ---
-    clean_people = [
-        p
+
+        clean_people = [
+        p.strip()
         for p in (people_list or [])
         if isinstance(p, str) and p.strip() and p.strip().lower() != "nan"
     ]
@@ -2965,11 +2967,13 @@ def build_oscar_movie_card_html(
     if clean_people:
         chips = []
         for p in clean_people:
+            # Escapamos cualquier <, >, & raro que venga del dataset
+            safe_name = html.escape(p).replace("'", "’")
             chips.append(
                 "<span style='background:rgba(148,163,184,0.18);border-radius:999px;"
                 "padding:3px 9px;font-size:0.70rem;text-transform:uppercase;"
                 "letter-spacing:0.10em;border:1px solid rgba(148,163,184,0.85);"
-                "color:#e5e7eb;'>✦ " + p.replace("'", "’") + "</span>"
+                "color:#e5e7eb;'>✦ " + safe_name + "</span>"
             )
         people_html = (
             "<div style='margin-top:8px;display:flex;flex-wrap:wrap;gap:6px;'>"

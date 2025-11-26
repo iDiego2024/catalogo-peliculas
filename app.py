@@ -2960,11 +2960,13 @@ def build_oscar_movie_card_html(
         )
 
     # --- Personas nominadas/ganadoras (texto simple y saneado) ---
-    people_html = ""
+
+    # --- Personas nominadas/ganadoras (solo TEXTO limpio, sin HTML extra) ---
+    people_text = ""
     names = []
 
     for p in (people_list or []):
-        # nos aseguramos de tratar todo como string
+        # Nos aseguramos de tratar todo como string
         if not isinstance(p, str):
             p = str(p)
 
@@ -2972,12 +2974,10 @@ def build_oscar_movie_card_html(
         if not raw or raw.lower() == "nan":
             continue
 
-        # 1) quitamos cualquier etiqueta HTML que venga en el dato
-        #    (por ejemplo: <div ...>, </span>, etc.)
+        # 1) Quitamos cualquier etiqueta HTML que venga en el dato
         no_tags = re.sub(r"<[^>]*>", "", raw)
 
-        # 2) si por alguna razón el texto ya trae "Nominado(s):"
-        #    lo limpiamos para no duplicar
+        # 2) Si el texto ya trae 'Nominado(s):', lo limpiamos
         lowered = no_tags.lower()
         if lowered.startswith("nominado(s):"):
             no_tags = no_tags.split(":", 1)[-1].strip()
@@ -2986,17 +2986,14 @@ def build_oscar_movie_card_html(
         if not name:
             continue
 
-        # 3) escapamos por seguridad y normalizamos comillas
+        # 3) Escapamos por seguridad y normalizamos comillas
         safe_name = html.escape(name).replace("'", "’")
         names.append(safe_name)
 
     if names:
-        people_html = (
-            "<div style='margin-top:8px;font-size:0.78rem;color:#e5e7eb;'>"
-            "<span style='font-size:0.78rem;color:#9ca3af;'>Nominado(s): </span>"
-            + ", ".join(names) +
-            "</div>"
-        )
+        people_text = "Nominado(s): " + ", ".join(names)
+
+
 
 
 
@@ -3071,7 +3068,7 @@ def build_oscar_movie_card_html(
     {streaming_html}<br><br>
     {category_block}
     {badges_row}
-    {people_html}
+    {people_text}
   </div>
 </div>
 """

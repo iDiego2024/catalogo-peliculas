@@ -2958,28 +2958,38 @@ def build_oscar_movie_card_html(
 
     # --- Chips de personas nominadas/ganadoras ---
 
-        clean_people = [
-        p.strip()
-        for p in (people_list or [])
-        if isinstance(p, str) and p.strip() and p.strip().lower() != "nan"
-    ]
+    # --- Personas (actores, directores, etc.) como chips ---
     people_html = ""
+    clean_people = []
+
+    # people_list debe venir de antes en la función,
+    # normalmente algo como: people_list = row.get("NomineeList") o similar.
+    for p in (people_list or []):
+        if isinstance(p, str):
+            name = p.strip()
+            if name and name.lower() != "nan":
+                clean_people.append(name)
+
     if clean_people:
         chips = []
-        for p in clean_people:
-            # Escapamos cualquier <, >, & raro que venga del dataset
-            safe_name = html.escape(p).replace("'", "’")
+        for name in clean_people:
+            # Escapamos caracteres raros para que no rompan el HTML
+            safe_name = html.escape(name).replace("'", "’")
             chips.append(
-                "<span style='background:rgba(148,163,184,0.18);border-radius:999px;"
-                "padding:3px 9px;font-size:0.70rem;text-transform:uppercase;"
-                "letter-spacing:0.10em;border:1px solid rgba(148,163,184,0.85);"
-                "color:#e5e7eb;'>✦ " + safe_name + "</span>"
+                "<span style='background:rgba(148,163,184,0.18);"
+                "border-radius:999px;padding:3px 9px;font-size:0.70rem;"
+                "text-transform:uppercase;letter-spacing:0.10em;"
+                "border:1px solid rgba(148,163,184,0.85);color:#e5e7eb;'>"
+                "✦ " + safe_name + "</span>"
             )
+
         people_html = (
             "<div style='margin-top:8px;display:flex;flex-wrap:wrap;gap:6px;'>"
             + "".join(chips)
             + "</div>"
         )
+
+
 
     # --- Ratings text ---
     imdb_txt = ""

@@ -1,10 +1,10 @@
+import re
 import html  # para escapar texto en los chips de personas
 import streamlit as st
 import pandas as pd
 import requests
 import random
 import altair as alt
-import re
 import math
 from urllib.parse import quote_plus
 

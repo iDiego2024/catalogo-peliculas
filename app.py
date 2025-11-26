@@ -3447,10 +3447,29 @@ with tab_awards:
                 else ""
             )
 
-            awards_badge = (
-                "<span style='background:rgba(34,197,94,0.18);border-radius:999px;"
-                "padding:4px 10px;font-size:0.78rem;text-transform:uppercase;"
+        awards_badge = (
+    "<span style='background:rgba(34,197,94,0.18);border-radius:999px;"
+    "padding:4px 10px;font-size:0.78rem;text-transform:uppercase;"
+    "letter-spacing:0.12em;border:1px solid #22c55e;color:#bbf7d0;'>"
+    f"🏆 {n_wins} premio(s)</span>"
+)
 
+noms_badge = (
+    "<span style='background:rgba(148,163,184,0.18);border-radius:999px;"
+    "padding:4px 10px;font-size:0.78rem;text-transform:uppercase;"
+    "letter-spacing:0.12em;border:1px solid rgba(148,163,184,0.85);color:#e5e7eb;'>"
+    f"🎫 {n_noms} nominación(es)</span>"
+)
+
+catalog_badge = ""
+if in_my_catalog:
+    rating_txt = f"{float(my_rating):.1f}" if pd.notna(my_rating) else "?"
+    catalog_badge = (
+        "<span style='background:rgba(234,179,8,0.16);border-radius:999px;"
+        "padding:4px 10px;font-size:0.78rem;text-transform:uppercase;"
+        "letter-spacing:0.12em;border:1px solid #facc15;color:#fef9c3;'>"
+        f"En mi catálogo · Mi nota: {rating_txt}</span>"
+    )
 
 
             

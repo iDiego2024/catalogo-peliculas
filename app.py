@@ -1344,7 +1344,7 @@ with tab_catalog:
     # ===================== GALERÍA VISUAL PAGINADA =====================
 
     st.markdown("---")
-    st.markdown("## 🧱 Galería visual (pósters en grid por páginas)")
+    st.markdown("## 🧱 Galería visual")
 
     if show_awards:
         st.caption(
@@ -3055,7 +3055,7 @@ def build_oscar_movie_card_html(
 
 
 with tab_awards:
-    st.markdown("## 🏆 Premios de la Academia (usando Oscar_Data_1927_today.xlsx)")
+    st.markdown("## 🏆 Premios de la Academia")
 
     # ---------- Carga y merge con tu catálogo ----------
     osc_raw = load_oscar_data_from_excel("Oscar_Data_1927_today.xlsx")

@@ -8,9 +8,14 @@ import math
 from urllib.parse import quote_plus
 
 # ===================== Versión y changelog =====================
-APP_VERSION = "1.1.5"  # <- súbela cuando publiques cambios
+APP_VERSION = "1.1.6"  # <- súbela cuando publiques cambios
 
 CHANGELOG = {
+    "1.1.6": [
+        "OMDb: se corrige el parseo de premios BAFTA.",
+        "Filtros: slider de 'Mi nota (Your Rating)' ahora admite decimales (paso 0.5).",
+    ],
+
     "1.1.5": [
         "Óscar: selector directo por año de ceremonia (sin rango).",
         "Óscar: se elimina el análisis por categoría y el top de entidades por categoría.",
@@ -511,7 +516,7 @@ def get_omdb_awards(title, year=None):
 
     m_bafta = re.search(r"won\s+(\d+)[^\.]*bafta", text_lower)
     if m_bafta:
-        baftas = int(m_bafta)
+        baftas = int(m_bafta.group(1))
     elif "bafta" in text_lower:
         baftas = 1
 
@@ -1131,13 +1136,24 @@ else:
     year_range = (0, 9999)
 
 if df["Your Rating"].notna().any():
-    min_rating = int(df["Your Rating"].min())
-    max_rating = int(df["Your Rating"].max())
+    # Tomamos min y max reales como floats
+    min_rating = float(df["Your Rating"].min())
+    max_rating = float(df["Your Rating"].max())
+
+    # Forzamos a estar en [0.0, 10.0]
+    min_rating = max(0.0, min(10.0, min_rating))
+    max_rating = max(0.0, min(10.0, max_rating))
+
     rating_range = st.sidebar.slider(
-        "Mi nota (Your Rating)", min_rating, max_rating, (min_rating, max_rating)
+        "Mi nota (Your Rating)",
+        min_value=0.0,
+        max_value=10.0,
+        value=(min_rating, max_rating),
+        step=0.5,
     )
 else:
-    rating_range = (0, 10)
+    rating_range = (0.0, 10.0)
+
 
 all_genres = sorted(
     set(

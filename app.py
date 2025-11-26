@@ -2961,11 +2961,12 @@ def build_oscar_movie_card_html(
 
     
     # --- Personas nominadas/ganadoras (HTML simple y estilado) ---
+    # --- Personas nominadas/ganadoras (pill sencilla) ---
     people_html = ""
     names = []
 
     for p in (people_list or []):
-        # nos aseguramos de tratar todo como texto
+        # Nos aseguramos de tratar todo como string
         if not isinstance(p, str):
             p = str(p)
 
@@ -2973,10 +2974,10 @@ def build_oscar_movie_card_html(
         if not raw or raw.lower() == "nan":
             continue
 
-        # 1) quitamos cualquier HTML que venga del Excel
+        # 1) Quitamos cualquier etiqueta HTML que venga del archivo (div, span, etc.)
         no_tags = re.sub(r"<[^>]*>", "", raw)
 
-        # 2) si trae "Nominado(s):" lo limpiamos
+        # 2) Si el texto ya trae 'Nominado(s):', lo limpiamos
         lowered = no_tags.lower()
         if lowered.startswith("nominado(s):"):
             no_tags = no_tags.split(":", 1)[-1].strip()
@@ -2985,25 +2986,22 @@ def build_oscar_movie_card_html(
         if not name:
             continue
 
-        # 3) escapamos por seguridad y normalizamos comillas
+        # 3) Escapamos por seguridad y normalizamos comillas
         safe_name = html.escape(name).replace("'", "’")
         names.append(safe_name)
 
     if names:
-        label_html = (
-            "<span style='font-size:0.72rem;color:#9ca3af;"
-            "text-transform:uppercase;letter-spacing:0.16em;"
-            "margin-right:6px;'>NOMINADO(S)</span>"
-        )
-        names_html = ", ".join(names)
+        label_and_names = "Nominado(s): " + ", ".join(names)
         people_html = (
-            "<div style='margin-top:10px;display:flex;flex-wrap:wrap;gap:6px;'>"
-            "<div style='background:rgba(15,23,42,0.9);border-radius:999px;"
-            "padding:4px 10px;font-size:0.78rem;border:1px solid rgba(148,163,184,0.8);"
-            "color:#e5e7eb;display:inline-flex;flex-wrap:wrap;gap:6px;align-items:center;'>"
-            f"{label_html}{names_html}"
-            "</div></div>"
+            "<p style='margin-top:10px;'>"
+            "<span style='background:rgba(15,23,42,0.9);"
+            "border-radius:999px;padding:4px 10px;font-size:0.78rem;"
+            "border:1px solid rgba(148,163,184,0.8);color:#e5e7eb;'>"
+            f"{label_and_names}"
+            "</span>"
+            "</p>"
         )
+
 
 
 

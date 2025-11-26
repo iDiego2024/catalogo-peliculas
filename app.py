@@ -3079,7 +3079,7 @@ def build_oscar_movie_card_html(
     {streaming_html}<br><br>
     {category_block}
     {badges_row}
-    {people_text}
+    {people_html}
   </div>
 </div>
 """

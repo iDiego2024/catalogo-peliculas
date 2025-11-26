@@ -2957,27 +2957,27 @@ def build_oscar_movie_card_html(
         )
 
     
-    # --- Chips de personas nominadas/ganadoras ---
-    clean_people = [
-        p
-        for p in (people_list or [])
-        if isinstance(p, str) and p.strip() and p.strip().lower() != "nan"
-    ]
+            # --- Chips de personas nominadas/ganadoras ---
+    
+    # --- Personas nominadas/ganadoras (texto simple) ---
     people_html = ""
-    if clean_people:
-        chips = []
-        for p in clean_people:
-            chips.append(
-                "<span style='background:rgba(148,163,184,0.18);border-radius:999px;"
-                "padding:3px 9px;font-size:0.70rem;text-transform:uppercase;"
-                "letter-spacing:0.10em;border:1px solid rgba(148,163,184,0.85);"
-                "color:#e5e7eb;'>✦ " + p.replace("'", "’") + "</span>"
-            )
+    names = []
+
+    for p in (people_list or []):
+        if isinstance(p, str):
+            name = p.strip()
+            if name and name.lower() != "nan":
+                # escapamos caracteres raros por si acaso
+                safe_name = html.escape(name).replace("'", "’")
+                names.append(safe_name)
+
+    if names:
         people_html = (
-            "<div style='margin-top:8px;display:flex;flex-wrap:wrap;gap:6px;'>"
-            + "".join(chips)
-            + "</div>"
+            "<div style='margin-top:8px;font-size:0.78rem;color:#e5e7eb;'>"
+            "Nominado(s): " + ", ".join(names) +
+            "</div>"
         )
+
 
 
 

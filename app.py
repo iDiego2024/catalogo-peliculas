@@ -2494,42 +2494,32 @@ def attach_catalog_to_oscars(osc_df, catalog_df):
     return merged
 
 
-
 def _build_people_chips(nominee_str: str) -> str:
-    """Devuelve una línea simple de nominados, sin HTML raro."""
-    if not isinstance(nominee_str, str):
+    """
+    Convierte el campo Nominee en chips HTML (personas / entidades).
+    """
+    if not isinstance(nominee_str, str) or not nominee_str.strip():
         return ""
-
-    nominee_str = nominee_str.strip()
-    if not nominee_str:
-        return ""
-
     # Separador básico por ' and ', '&', ','
     parts = re.split(r",| & | and ", nominee_str)
-    names = []
+    chips = []
     for p in parts:
         name = p.strip()
         if not name:
             continue
-        # Evitamos cosas tipo 'nan' y escapamos caracteres raros
-        if name.lower() == "nan":
-            continue
-        safe_name = html.escape(name).replace("'", "’")
-        names.append(safe_name)
-
-    if not names:
+        chips.append(
+            f"<span style='background:rgba(148,163,184,0.18);"
+            f"border-radius:999px;padding:2px 9px;font-size:0.72rem;"
+            f"text-transform:uppercase;letter-spacing:0.10em;"
+            f"border:1px solid rgba(148,163,184,0.85);color:#e5e7eb;'>✦ {name}</span>"
+        )
+    if not chips:
         return ""
-
     return (
-        "<div style='margin-top:8px;font-size:0.78rem;color:#e5e7eb;'>"
-        "<span style='font-size:0.78rem;color:#9ca3af;'>Nominado(s): </span>"
-        + ", ".join(names) +
-        "</div>"
+        "<div style='margin-top:8px;display:flex;flex-wrap:wrap;gap:6px;'>"
+        + "".join(chips)
+        + "</div>"
     )
-
-
-
-
 
 
 def _winner_badge_html():
@@ -2704,6 +2694,9 @@ def _build_oscar_card_html(row, categories_for_film=None, wins_for_film=None,
 </div>
 """
     return card_html
+
+
+
 
 # ============================================================
 #                     TAB 4: PREMIOS ÓSCAR

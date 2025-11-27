@@ -5,8 +5,10 @@ import random
 import altair as alt
 import re
 import math
+import fuzz  # <--- NUEVO IMPORT
 from urllib.parse import quote_plus
-from thefuzz import fuzz  # <--- NUEVO IMPORT
+from thefuzz 
+
 
 # ===================== Versión y changelog =====================
 APP_VERSION = "1.1.7"  # <- Actualizado

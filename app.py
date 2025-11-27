@@ -5,10 +5,8 @@ import random
 import altair as alt
 import re
 import math
-import fuzz  # <--- NUEVO IMPORT
 from urllib.parse import quote_plus
-from thefuzz 
-
+import fuzz from thefuzz # <--- NUEVO IMPORT 
 
 # ===================== Versión y changelog =====================
 APP_VERSION = "1.1.7"  # <- Actualizado
@@ -3753,4 +3751,5 @@ with tab_what:
 
 st.markdown("---")
 st.caption(f"Versión de la app: v{APP_VERSION} · Powered by Diego Leal")
+
 

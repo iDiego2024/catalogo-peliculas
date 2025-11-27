@@ -1150,7 +1150,6 @@ order_by = st.sidebar.selectbox(
     "Ordenar por",
     ["Your Rating", "IMDb Rating", "Year", "Title", "Aleatorio"]
 )
-order_asc = st.sidebar.checkbox("Orden ascendente", value=False)
 
 # ... aquí estaba el código de order_asc ...
 order_asc = st.sidebar.checkbox("Orden ascendente", value=False)

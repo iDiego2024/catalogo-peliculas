@@ -1170,12 +1170,6 @@ if show_awards:
 # ---- Changelog al FINAL de la barra lateral ----
 st.sidebar.markdown("---")
 st.sidebar.header("🧾 Versiones")
-# ... (el resto sigue igual)
-
-
-# ---- Changelog al FINAL de la barra lateral ----
-st.sidebar.markdown("---")
-st.sidebar.header("🧾 Versiones")
 with st.sidebar.expander("Ver changelog", expanded=False):
     for ver, notes in CHANGELOG.items():
         st.markdown(f"**v{ver}**")
@@ -3715,5 +3709,4 @@ with tab_what:
 
 st.markdown("---")
 st.caption(f"Versión de la app: v{APP_VERSION} · Powered by Diego Leal")
-
 

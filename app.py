@@ -2947,4 +2947,5 @@ with tab_what:
 st.markdown("---")
 st.caption(f"Versión de la app: v{APP_VERSION} · Powered by Diego Leal")
 
-}
+
+

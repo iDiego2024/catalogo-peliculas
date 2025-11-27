@@ -11,6 +11,10 @@ from urllib.parse import quote_plus
 APP_VERSION = "1.1.5"  # <- súbela cuando publiques cambios
 
 CHANGELOG = {
+    "1.1.6": [
+        "Sidebar: Se eliminan opciones de visualización (TMDb, Tráilers, Pósters) dejándolas activas por defecto.",
+        "UX: La opción avanzada de consultar premios OMDb se mueve bajo la sección de Filtros.",
+    ],
     "1.1.5": [
         "Óscar: selector directo por año de ceremonia (sin rango).",
         "Óscar: se elimina el análisis por categoría y el top de entidades por categoría.",
@@ -1087,35 +1091,13 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# ----------------- Opciones de visualización -----------------
+# ----------------- Opciones de visualización (Fijas por defecto) -----------------
+# Se han eliminado los controles del sidebar, pero mantenemos las variables en True
+show_posters_fav = True
+use_tmdb_gallery = True
+show_trailers = True
 
-st.sidebar.header("🖼️ Opciones de visualización")
-show_posters_fav = st.sidebar.checkbox(
-    "Mostrar pósters TMDb en mis favoritas (nota ≥ 9)",
-    value=True
-)
-
-st.sidebar.header("🌐 TMDb")
-use_tmdb_gallery = st.sidebar.checkbox(
-    "Usar TMDb en la galería visual",
-    value=True
-)
-
-st.sidebar.header("🎬 Tráilers")
-show_trailers = st.sidebar.checkbox(
-    "Mostrar tráiler de YouTube (si hay API key)",
-    value=True
-)
-
-st.sidebar.header("⚙️ Opciones avanzadas")
-show_awards = st.sidebar.checkbox(
-    "Consultar premios en OMDb (más lento, usa cuota de API)",
-    value=False
-)
-if show_awards:
-    st.sidebar.caption(
-        "⚠ Consultar premios para muchas películas puede hacer la app más lenta en la primera carga."
-    )
+# La opción "show_awards" se ha movido más abajo, dentro de la sección de filtros.
 
 # ----------------- Filtros (sidebar) -----------------
 
@@ -1169,6 +1151,28 @@ order_by = st.sidebar.selectbox(
     ["Your Rating", "IMDb Rating", "Year", "Title", "Aleatorio"]
 )
 order_asc = st.sidebar.checkbox("Orden ascendente", value=False)
+
+# ... aquí estaba el código de order_asc ...
+order_asc = st.sidebar.checkbox("Orden ascendente", value=False)
+
+# --- NUEVA UBICACIÓN DE OPCIONES AVANZADAS ---
+st.sidebar.markdown("---")
+st.sidebar.subheader("⚙️ Opciones avanzadas")
+show_awards = st.sidebar.checkbox(
+    "Consultar premios en OMDb (más lento, usa cuota de API)",
+    value=False
+)
+if show_awards:
+    st.sidebar.caption(
+        "⚠ Consultar premios para muchas películas puede hacer la app más lenta en la primera carga."
+    )
+# ---------------------------------------------
+
+# ---- Changelog al FINAL de la barra lateral ----
+st.sidebar.markdown("---")
+st.sidebar.header("🧾 Versiones")
+# ... (el resto sigue igual)
+
 
 # ---- Changelog al FINAL de la barra lateral ----
 st.sidebar.markdown("---")
@@ -3712,3 +3716,4 @@ with tab_what:
 
 st.markdown("---")
 st.caption(f"Versión de la app: v{APP_VERSION} · Powered by Diego Leal")
+

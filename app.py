@@ -8,7 +8,7 @@ import math
 from urllib.parse import quote_plus
 
 # ===================== Versión y changelog =====================
-APP_VERSION = "1.1.5"  # <- súbela cuando publiques cambios
+APP_VERSION = "1.1.6"  # <- súbela cuando publiques cambios
 
 CHANGELOG = {
     "1.1.6": [
@@ -3715,4 +3715,5 @@ with tab_what:
 
 st.markdown("---")
 st.caption(f"Versión de la app: v{APP_VERSION} · Powered by Diego Leal")
+
 

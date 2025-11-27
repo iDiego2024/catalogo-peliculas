@@ -7,16 +7,16 @@ import altair as alt
 import re
 import math
 from urllib.parse import quote_plus
-from collections import defaultdict # Necesaria para el análisis de Oscar
+from collections import defaultdict
 
 # ===================== Versión y changelog =====================
-APP_VERSION = "1.1.7"  # <- Nueva versión con las correcciones
+APP_VERSION = "1.1.7"  # Versión final con el CSS incrustado y correcciones
 
 CHANGELOG = {
     "1.1.7": [
+        "**Estructura:** Código unificado en un solo archivo `app.py`. CSS incrustado (eliminando la dependencia de `style.css`).",
         "**Optimización:** Búsqueda AFI reescrita a O(1) con mapa de catálogo (eliminando el cuello de botella).",
         "**Estructura:** Eliminación de funciones duplicadas para carga de datos y enlace de catálogo (mayor limpieza de código).",
-        "**Diseño:** Extracción del CSS a `style.css` (mejor mantenimiento del diseño).",
         "OMDb: se corrige el parseo de premios BAFTA.",
         "Filtros: slider de 'Mi nota (Your Rating)' ahora admite decimales (paso 0.5).",
     ],
@@ -29,7 +29,6 @@ CHANGELOG = {
         "Óscar: se elimina el análisis por categoría y el top de entidades por categoría.",
         "Óscar: nueva galería visual por categoría con pósters para el año seleccionado.",
     ],
-    # ... (Se omiten logs antiguos por espacio, pero mantenlos en tu archivo)
     "1.0.0": [
         "Catálogo, filtros, galería visual paginada, análisis, AFI y ¿Qué ver hoy?",
         "Integraciones opcionales: TMDb, YouTube y OMDb para premios por película.",
@@ -427,7 +426,7 @@ def get_omdb_awards(title, year=None):
         if year is not None and not pd.isna(year):
             year_int = int(float(year))
     except Exception:
-        year_int = None
+        pass
 
     def _query(params):
         try:
@@ -688,10 +687,6 @@ def recommend_from_catalog(df_all, seed_row, top_n=5):
 def load_full_data(path_csv="full_data.csv"):
     """
     Carga robusta del dataset unificado (nominaciones + ganadores) de DLu/oscar_data.
-    Columnas relevantes (según el repo): 
-      Ceremony, Year, Category, CanonicalCategory, Film, Nominee, NomineeIds, Winner
-    - Winner marca al ganador por categoría (1/True = ganador).
-    - NomineeIds pueden representar personas o entidades (p. ej. productoras).
     """
     # 1) Lectura tolerante al separador y a filas problemáticas
     try:
@@ -818,35 +813,156 @@ def fmt_year(y):
     except Exception:
         return "N/A"
 
-# ===================== Estilos (CSS) =====================
-def apply_external_css(file_name):
-    """Carga y aplica el CSS desde un archivo externo."""
-    try:
-        with open(file_name) as f:
-            st.markdown(f'<style>{f.read()}</style>', unsafe_allow_html=True)
-    except FileNotFoundError:
-        st.error(f"Error: No se encontró el archivo de estilos `{file_name}`.")
-        
-        # CSS de fallback (para que al menos se vean los elementos)
-        fallback_css = """
-        .movie-card {
-            border: 1px solid #333;
-            padding: 10px;
-            margin-bottom: 10px;
-            border-radius: 8px;
-            background-color: #1e293b;
-            color: #e5e7eb;
-        }
-        .movie-gallery-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-            gap: 20px;
-        }
-        """
-        st.markdown(f'<style>{fallback_css}</style>', unsafe_allow_html=True)
-        
+# ===================== Estilos (CSS) incrustados =====================
+def apply_embedded_css():
+    """Define y aplica los estilos CSS directamente en el script."""
+    embedded_css = """
+/*
+  ESTILOS PRINCIPALES INCRUSTADOS
+  Necesarios para las tarjetas de la galería y el modo oscuro
+*/
 
-apply_external_css("style.css")
+.movie-card {
+    border: 1px solid #475569;
+    padding: 15px;
+    margin-bottom: 15px;
+    border-radius: 12px;
+    background-color: #1e293b;
+    color: #e5e7eb;
+    transition: all 0.3s ease;
+}
+
+.movie-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+}
+
+.movie-gallery-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 20px;
+}
+
+.movie-card-grid {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+    position: relative;
+    /* Los bordes y sombras dinámicas se aplican inline, esto es el base */
+    box-shadow: 0 0 0 1px rgba(15,23,42,0.9), 0 0 12px rgba(148,163,184,0.1); 
+}
+
+.movie-poster-frame {
+    flex-shrink: 0;
+    width: 100%;
+    padding-bottom: 150%; /* Aspect ratio 2:3 */
+    position: relative;
+    overflow: hidden;
+    border-radius: 8px;
+}
+
+.movie-poster-img {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.movie-poster-placeholder {
+    width: 100%;
+    height: 100%;
+    background-color: #334155;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    color: #94a3b8;
+    font-size: 1rem;
+}
+
+.film-reel-icon {
+    font-size: 3rem;
+}
+
+.film-reel-text {
+    margin-top: 5px;
+    font-size: 0.9rem;
+}
+
+.movie-title {
+    margin-top: 10px;
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: #f8fafc;
+    line-height: 1.3;
+    flex-grow: 0;
+}
+
+.movie-sub {
+    margin-top: 8px;
+    font-size: 0.85rem;
+    color: #94a3b8;
+    line-height: 1.6;
+    flex-grow: 1;
+}
+
+/* Estilos de Streamlit para mejorar el aspecto general (fondo, etc.) */
+.stApp {
+    background-color: #0f172a; 
+    color: #e5e7eb;
+}
+
+/* Ocultar menú y footer de Streamlit */
+#MainMenu { visibility: hidden; }
+footer { visibility: hidden; }
+header { visibility: hidden; }
+
+/* Estilo para los rating boxes en 'Qué ver hoy' */
+.rating-box {
+    padding: 10px 15px;
+    border: 1px solid #475569;
+    border-radius: 6px;
+    background-color: #334155;
+    font-weight: 600;
+    color: #f8fafc;
+}
+
+/* Estilo para la tabla de análisis */
+table {
+    width: 100%;
+    margin-top: 15px;
+    border-collapse: collapse;
+    font-size: 0.95rem;
+}
+th {
+    background-color: #334155 !important; 
+    color: #e5e7eb;
+    text-align: left;
+    padding: 10px 12px;
+}
+td {
+    padding: 10px 12px;
+    border-bottom: 1px solid #334155;
+}
+tr:nth-child(even) {
+    background-color: #1e293b;
+}
+a {
+    color: #38bdf8; 
+    text-decoration: none;
+}
+a:hover {
+    text-decoration: underline;
+}
+"""
+    st.markdown(f'<style>{embedded_css}</style>', unsafe_allow_html=True)
+
+# Aplica el CSS antes de cualquier otro elemento de Streamlit
+apply_embedded_css()
 # =========================================================
 
 
@@ -1120,22 +1236,6 @@ if not df.empty:
         )
 
 
-# 3. Sidebar y Filtros
-# ... (El resto del código Streamlit (sidebar, pestañas, filtros) sigue sin cambios)
-#
-# ************************************************
-# NOTA: EL RESTO DEL CÓDIGO DE app.py SIGUE AQUÍ
-# ************************************************
-#
-# Debido a la extensión, se omite el resto del código Streamlit (filtros, pestañas, etc.), 
-# pero asegúrate de que el código que tenías en App2.py para estas secciones
-# se pegue a continuación de este punto en el nuevo archivo app.py.
-
-
-# =========================================================================================
-# NOTA DEL ASISTENTE: PEGA AQUÍ EL RESTO DEL CONTENIDO DE TU ARCHIVO App2.py (DESDE LOS FILTROS)
-# =========================================================================================
-
 if not df.empty:
 
     # ----------------- INICIO DE SIDEBAR Y FILTROS -----------------
@@ -1156,11 +1256,17 @@ if not df.empty:
     max_year_default = df_full["YearInt"].replace(-1, None).max() if not df_full.empty and "YearInt" in df_full.columns else 2025
 
     if min_year_default is not None and max_year_default is not None:
+        # Asegurarse de que los valores sean enteros y que el rango sea válido
+        min_y = int(min_year_default)
+        max_y = int(max_year_default)
+        if min_y > max_y:
+             min_y, max_y = 1900, 2025 # Fallback seguro
+             
         year_range = st.sidebar.slider(
             "Rango de años de estreno (Year):",
-            min_value=int(min_year_default),
-            max_value=int(max_year_default),
-            value=(int(min_year_default), int(max_year_default)),
+            min_value=min_y,
+            max_value=max_y,
+            value=(min_y, max_y),
             step=1,
             key="year_range",
         )
@@ -1193,7 +1299,7 @@ if not df.empty:
             min_value=min_rating,
             max_value=max_rating,
             value=(min_rating, max_rating),
-            step=0.5, # ¡Corrección aplicada!
+            step=0.5, 
             key="rating_range",
         )
     else:
@@ -1293,7 +1399,18 @@ if not df.empty:
     if osc_available:
         tabs.insert(2, "🏆 Premios Óscar") # Pestaña en la posición 3
 
-    tab_gallery, tab_analysis, *tab_others = st.tabs(tabs)
+    # Desempaquetado dinámico de pestañas
+    tab_objects = st.tabs(tabs)
+    tab_map = {name: obj for name, obj in zip(tabs, tab_objects)}
+    
+    tab_gallery = tab_map["1. Galería"]
+    tab_analysis = tab_map["2. Análisis"]
+    
+    # Obtener el resto de las pestañas
+    tab_afi = tab_map["3. AFI 100"]
+    tab_today = tab_map["4. ¿Qué ver hoy?"]
+    tab_oscar = tab_map.get("🏆 Premios Óscar")
+
 
     # ----------------- TAB 1: GALERÍA VISUAL -----------------
     with tab_gallery:
@@ -1595,10 +1712,7 @@ if not df.empty:
 
 
     # ----------------- TAB 3: AFI 100 -----------------
-    # La posición real de esta pestaña depende de si osc_available es True o False
-    # La buscamos en la tupla tab_others
-    afi_tab_index = 1 if osc_available else 0
-    with tab_others[afi_tab_index]:
+    with tab_afi:
         st.header("Lista AFI 100 Years...100 Movies (10th Anniversary)")
         
         afi_df = pd.DataFrame(AFI_LIST)
@@ -1672,9 +1786,7 @@ if not df.empty:
 
 
     # ----------------- TAB 4: ¿QUÉ VER HOY? -----------------
-    # La posición real de esta pestaña depende de si osc_available es True o False
-    today_tab_index = 2 if osc_available else 1
-    with tab_others[today_tab_index]:
+    with tab_today:
         st.header("✨ Recomendación del día")
 
         # Opciones para la recomendación
@@ -1906,9 +2018,8 @@ if not df.empty:
 
 
     # ----------------- TAB: PREMIOS ÓSCAR -----------------
-    if osc_available:
-        oscar_tab_index = 0 # Siempre está en la posición 0 de tab_others
-        with tab_others[oscar_tab_index]:
+    if osc_available and tab_oscar is not None:
+        with tab_oscar:
             st.header("🏆 Premios Óscar (Nominaciones y Ganadores)")
 
             if osc_df.empty:
@@ -1964,7 +2075,7 @@ if not df.empty:
                     # Tabla de Resumen
                     film_summary["TitleLink"] = film_summary.apply(
                         lambda r: f'<a href="{r["CatalogURL"]}" target="_blank">{r["Film"]} ({fmt_year(r["YearInt"])})</a>' 
-                                  if isinstance(r["CatalogURL"], str) else f'{r["Film"]} ({fmt_year(r["YearInt"])})', axis=1
+                                  if isinstance(r["CatalogURL"], str) and r["CatalogURL"].startswith("http") else f'{r["Film"]} ({fmt_year(r["YearInt"])})', axis=1
                     )
                     
                     film_summary["Mi Nota"] = film_summary["MyRating"].apply(lambda x: f'<b style="color:{get_rating_colors(x)[0]};">{x:.1f}</b>' if pd.notna(x) else "—")
@@ -2020,10 +2131,6 @@ if not df.empty:
                             # Mostrar las tarjetas de cada película nominada en la categoría
                             cards_html_cat = ["<div class='movie-gallery-grid'>"]
                             
-                            # Obtener info de todas las películas antes de iterar para la tarjeta
-                            film_list = df_films_in_cat["Film"].tolist()
-                            
-                            # Aquí se podría optimizar llamando a la función cacheada
                             
                             for _, row_film in df_films_in_cat.iterrows():
                                 
@@ -2042,8 +2149,10 @@ if not df.empty:
                                 }
                                 
                                 # Contar las nominaciones y premios totales para el badge de resumen
-                                total_wins = film_summary[film_summary["Film"] == row_film["Film"]]["Wins"].iloc[0]
-                                total_noms = film_summary[film_summary["Film"] == row_film["Film"]]["Nominations"].iloc[0]
+                                # Se usa el film_summary precalculado para no tener que buscar de nuevo
+                                summary_match = film_summary[film_summary["Film"] == row_film["Film"]]
+                                total_wins = summary_match["Wins"].iloc[0] if not summary_match.empty else 0
+                                total_noms = summary_match["Nominations"].iloc[0] if not summary_match.empty else 0
                                 
                                 card_html = _build_oscar_card_html(
                                     mock_row,
@@ -2100,8 +2209,7 @@ if not df.empty:
                     df_ids = df_osc_range.explode("NomineeIdList")
                     
                     # Filtra las IDs que no son de personas/entidades (ej. el nombre de la película)
-                    # La lógica de IDs del dataset de DLu asume que IDs con 3 o menos caracteres 
-                    # o que son iguales al título, son el título, no la persona. Es imperfecto, pero ayuda.
+                    # Se usa un filtro simple, ya que el NomineeIdList del dataset es inconsistente
                     df_ids = df_ids[df_ids["NomineeIdList"].str.len() > 3] 
                     
                     df_rank_nom = (

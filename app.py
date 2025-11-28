@@ -170,6 +170,21 @@ def normalize_title(s: str) -> str:
     """Normaliza un título para compararlo (minúsculas, sin espacios ni signos)."""
     return re.sub(r"[^a-z0-9]+", "", str(s).lower())
 
+# --- AQUÍ PEGAS EL CÓDIGO FALTANTE ---
+def fmt_year(y):
+    if pd.isna(y):
+        return ""
+    return f"{int(float(y))}"
+
+def fmt_rating(v):
+    if pd.isna(v):
+        return ""
+    try:
+        return f"{float(v):.1f}"
+    except Exception:
+        return str(v)
+# --------------------------------------
+
 # ===================== FUNCIONES AUXILIARES GLOBALES =====================
 
 @st.cache_data

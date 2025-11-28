@@ -6,12 +6,16 @@ import altair as alt
 import re
 import math
 from urllib.parse import quote_plus
-from thefuzz import fuzz
+from rapidfuzz import fuzz  # <- antes: from thefuzz import fuzz
 
 # ===================== Versión y changelog =====================
-APP_VERSION = "1.1.7"  # <- Actualizado
+APP_VERSION = "1.1.8"  # <- Nueva versión
 
 CHANGELOG = {
+    "1.1.8": [
+        "Búsqueda: Fuzzy Search optimizada usando rapidfuzz (más rápida en catálogos grandes).",
+        "Búsqueda: Menos comparaciones difusas innecesarias (se priorizan coincidencias literales).",
+    ],
     "1.1.7": [
         "Búsqueda: Se implementa 'Fuzzy Search' (búsqueda difusa). Ahora encuentra resultados aunque haya errores ortográficos leves (ej: 'Openhimer').",
         "Búsqueda: Los resultados se ordenan por relevancia de coincidencia.",
@@ -69,6 +73,10 @@ def _parse_ver_tuple(v: str):
 
 def since(ver: str) -> bool:
     return _parse_ver_tuple(APP_VERSION) >= _parse_ver_tuple(ver)
+
+
+
+
 
 # ----------------- Configuración general -----------------
 
@@ -1251,46 +1259,53 @@ search_query = st.text_input(
 def apply_search(df_in, query):
     """
     Aplica búsqueda difusa (fuzzy) sobre la columna SearchText.
-    Retorna resultados si coinciden parcialmente o si tienen un score alto de similitud.
+    - Prioriza coincidencias literales (substring).
+    - Usa fuzzy sólo donde no hay match literal.
+    - Ordena por score de similitud.
     """
     if not query:
         return df_in
-    
+
     q = query.strip().lower()
     if "SearchText" not in df_in.columns:
         return df_in
 
-    # 1. Filtro rápido: Coincidencia literal (substring)
-    # Esto asegura que si escribes "2023", salgan las de 2023 sí o sí.
+    # 1. Coincidencia literal rápida (substring)
     mask_exact = df_in["SearchText"].str.contains(q, na=False, regex=False)
 
-    # Si la query es muy corta (1 o 2 letras), nos quedamos solo con el exacto para no saturar
+    # Queries muy cortas (1–2 caracteres): sólo exacto para no traer ruido
     if len(q) < 3:
         return df_in[mask_exact]
 
-    # 2. Filtro Difuso (Fuzzy): Calcula similitud
-    # Usamos partial_token_set_ratio que maneja muy bien palabras desordenadas y strings parciales
-    # Ej: "god father" encuentra "The Godfather"
+    # 2. Partimos el DataFrame en: exactos y candidatos para fuzzy
+    exact_df = df_in[mask_exact].copy()
+    if not exact_df.empty:
+        exact_df["search_score"] = 100  # match perfecto
+
+    subset = df_in[~mask_exact].copy()
+
     def get_fuzzy_score(text):
         if not isinstance(text, str):
             return 0
+        # partial_token_set_ratio funciona bien con palabras desordenadas / parciales
         return fuzz.partial_token_set_ratio(q, text)
 
-    # Creamos una copia para no alterar el original con la columna 'score'
-    scored_df = df_in.copy()
-    
-    # Calculamos el score para cada fila (esto es rápido para <5000 pelis)
-    scored_df["search_score"] = scored_df["SearchText"].apply(get_fuzzy_score)
+    if not subset.empty:
+        subset["search_score"] = subset["SearchText"].apply(get_fuzzy_score)
+        # Umbral de similitud: 75 suele ser buen balance para errores leves
+        subset = subset[subset["search_score"] >= 75]
+    else:
+        subset["search_score"] = []
 
-    # Definimos un umbral. 
-    # score >= 75 suele ser un buen balance para errores ortográficos leves.
-    # Combinamos: (Es coincidencia exacta) O (Tiene score alto)
-    final_df = scored_df[ mask_exact | (scored_df["search_score"] >= 75) ]
+    # 3. Unimos y ordenamos por mejor score primero
+    if exact_df.empty and subset.empty:
+        return df_in.iloc[0:0]  # DataFrame vacío con mismas columnas
 
-    # Ordenamos por score descendente (los mejores matches primero)
+    final_df = pd.concat([exact_df, subset], axis=0)
     final_df = final_df.sort_values("search_score", ascending=False)
 
     return final_df
+
 
 
 filtered_view = apply_search(filtered.copy(), search_query)
